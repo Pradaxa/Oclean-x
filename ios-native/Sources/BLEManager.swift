@@ -272,6 +272,27 @@ final class BLEManager: NSObject, ObservableObject {
                 }
                 if allOk { await MainActor.run { st.pending = PendingSettings(); st.save() }; dlog("ajustes aplicados") }
                 else { dlog("algunos ajustes no se pudieron enviar; quedan pendientes") }
+
+                // 4d) Verificacion REAL: releer el estado del cepillo (0302) y confirmar
+                // que cada ajuste quedo como lo pedimos. Si el cepillo no lo confirma,
+                // el ajuste no es real para ese modelo y lo decimos.
+                if let send = chars[C_SEND] {
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    try? await write([0x03, 0x02, 0x01], to: send, on: p)
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    let cur = await MainActor.run { (st.brushMode, st.areaRemind, st.overPressure, st.headDays, st.headTimes) }
+                    var checks: [String] = []
+                    if let scheme = pend.scheme { checks.append(cur.0 == scheme ? "modo OK" : "modo NO confirmado por el cepillo") }
+                    if let v = pend.areaRemind { checks.append(cur.1 == v ? "aviso zonas OK" : "aviso zonas NO confirmado") }
+                    if let v = pend.overPressure { checks.append(cur.2 == v ? "alerta presion OK" : "alerta presion NO confirmada") }
+                    if let hd = pend.headDays { checks.append(cur.3 == max(1, min(365, hd)) ? "dias cabezal OK" : "dias cabezal NO confirmado") }
+                    if pend.resetHead == true { checks.append(cur.4 == 0 ? "reinicio cabezal OK" : "reinicio cabezal NO confirmado") }
+                    if !checks.isEmpty {
+                        let rep = checks.joined(separator: " - ")
+                        dlog("verificacion de ajustes: \(rep)")
+                        await MainActor.run { st.settingsCheck = rep }
+                    }
+                }
             }
         }
 

@@ -127,6 +127,8 @@ final class BrushStore: ObservableObject {
     @Published var pending = PendingSettings()
     @Published var lastSess: Int = -1
     @Published var lastSync: Double? = nil
+    // Resultado de la verificación de ajustes contra el cepillo (transitorio, no se guarda)
+    @Published var settingsCheck: String? = nil
 
     private var fileURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("store.json")

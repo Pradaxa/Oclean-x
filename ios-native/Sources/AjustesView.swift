@@ -49,9 +49,8 @@ struct AjustesView: View {
                             Toggle("Aviso de zonas", isOn: Binding(
                                 get: { store.pending.areaRemind ?? store.areaRemind },
                                 set: { store.pending.areaRemind = $0; store.save() })).tint(Theme.accent)
-                            Toggle("Aviso de tiempo", isOn: Binding(
-                                get: { store.pending.remindSwitch ?? false },
-                                set: { store.pending.remindSwitch = $0; store.save() })).tint(Theme.accent)
+                            // "Aviso de tiempo" (0239) quitado: el cepillo no devuelve ese ajuste
+                            // en su estado, así que no podemos verificar que sea real para este modelo.
                             Toggle("Alerta de presión", isOn: Binding(
                                 get: { store.pending.overPressure ?? store.overPressure },
                                 set: { store.pending.overPressure = $0; store.save() })).tint(Theme.accent)
@@ -83,8 +82,12 @@ struct AjustesView: View {
                                 }.glassGhostButton()
                             }
 
-                            Text("Los cambios se envían al cepillo en la próxima sincronización. Potencia y duración vienen definidas por el modo elegido.")
+                            Text("Los cambios se envían al cepillo en la próxima sincronización y se comprueban contra su estado real. Potencia y duración vienen definidas por el modo elegido.")
                                 .font(.footnote).foregroundColor(.secondary)
+                            if let chk = store.settingsCheck {
+                                Text("Verificación con el cepillo: \(chk)")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
                         }
                     }
 
