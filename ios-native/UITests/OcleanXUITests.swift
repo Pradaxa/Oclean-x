@@ -40,16 +40,29 @@ final class OcleanXUITests: XCTestCase {
         let app = launch(["-seedDemo", "-hoySelectBad", "-openTab", "hoy"])
         let state = app.staticTexts["rot-state"].firstMatch
         XCTAssertTrue(state.waitForExistence(timeout: 20), "no aparece el 3D")
-        sleep(6) // carga del GLB + montaje con clases reales
-        // Las clases con zonas malas tienen que haber llegado al JS (eco por script message)
-        XCTAssertTrue(state.label.contains("bad"),
-                      "las clases reales no llegaron al render. rot-state: \(state.label)")
-        let v0 = state.label
+        // OJO: XCTest devuelve SNAPSHOTS OBSOLETOS al leer .label de un elemento
+        // ya resuelto. Hay que usar expectativas con predicado (reevaluan con
+        // snapshot fresco) o releer la consulta entera cada vez.
+        func fresh() -> String { app.staticTexts["rot-state"].firstMatch.label }
+        // Las clases con zonas malas tienen que haber llegado al JS (eco por fetch/postMessage)
+        let badExp = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS %@", "bad"),
+            object: app.staticTexts["rot-state"].firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [badExp], timeout: 30), .completed,
+                       "las clases reales no llegaron al render. rot-state: \(fresh())")
+        let v0 = fresh()
         app.webViews.firstMatch.swipeRight()
-        let v1 = state.label
-        XCTAssertNotEqual(v0, v1, "el arrastre no cambió la rotación")
+        let rotExp = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label != %@", v0),
+            object: app.staticTexts["rot-state"].firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [rotExp], timeout: 8), .completed,
+                       "el arrastre no cambió la rotación. rot-state: \(fresh())")
+        let v1 = fresh()
         app.webViews.firstMatch.pinch(withScale: 1.6, velocity: 1)
-        let v2 = state.label
-        XCTAssertNotEqual(v1, v2, "el pellizco no cambió el zoom")
+        let zoomExp = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label != %@", v1),
+            object: app.staticTexts["rot-state"].firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [zoomExp], timeout: 8), .completed,
+                       "el pellizco no cambió el zoom. rot-state: \(fresh())")
     }
 }
