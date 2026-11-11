@@ -49,12 +49,15 @@ jobs:
           BID=com.pradaxa.ocleanx
           xcrun simctl ui "$DEVICE" appearance dark
           xcrun simctl launch "$DEVICE" "$BID" >/dev/null 2>&1 || true
-          # Espera a que cargue la web y el modelo 3D (three.js + GLB)
-          sleep 25
+          # Espera a que cargue la web y el modelo 3D (three.js + GLB);
+          # en simulador Intel con GPU por software puede tardar mucho.
           mkdir -p shots
-          xcrun simctl io "$DEVICE" screenshot "shots/dark-hoy.png" || true
-          sleep 10
-          xcrun simctl io "$DEVICE" screenshot "shots/dark-hoy-2.png" || true
+          sleep 40
+          xcrun simctl io "$DEVICE" screenshot "shots/dark-hoy-40s.png" || true
+          sleep 30
+          xcrun simctl io "$DEVICE" screenshot "shots/dark-hoy-70s.png" || true
+          sleep 30
+          xcrun simctl io "$DEVICE" screenshot "shots/dark-hoy-100s.png" || true
           ls -la shots/
 
       - name: Subir capturas
