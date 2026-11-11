@@ -52,6 +52,9 @@ struct AjustesView: View {
                             Toggle("Aviso de tiempo", isOn: Binding(
                                 get: { store.pending.remindSwitch ?? false },
                                 set: { store.pending.remindSwitch = $0; store.save() })).tint(Theme.accent)
+                            Toggle("Apagado automático", isOn: Binding(
+                                get: { store.pending.runningSwitch ?? false },
+                                set: { store.pending.runningSwitch = $0; store.save() })).tint(Theme.accent)
                             Toggle("Alerta de presión", isOn: Binding(
                                 get: { store.pending.overPressure ?? store.overPressure },
                                 set: { store.pending.overPressure = $0; store.save() })).tint(Theme.accent)

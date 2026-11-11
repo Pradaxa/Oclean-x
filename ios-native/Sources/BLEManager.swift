@@ -260,6 +260,9 @@ final class BLEManager: NSObject, ObservableObject {
                 if let v = pend.remindSwitch {
                     if !(await writeOK([0x02, 0x39, v ? 1 : 0], to: w, on: p)) { allOk = false }
                 }
+                if let v = pend.runningSwitch {
+                    if !(await writeOK([0x02, 0x40, v ? 1 : 0], to: w, on: p)) { allOk = false }
+                }
                 if let v = pend.overPressure {
                     if await writeOK([0x02, 0x12, v ? 1 : 0], to: w, on: p) { await MainActor.run { st.overPressure = v } } else { allOk = false }
                 }

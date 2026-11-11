@@ -19,11 +19,12 @@ struct PendingSettings: Codable {
     var scheme: Int?
     var areaRemind: Bool?
     var remindSwitch: Bool?
+    var runningSwitch: Bool?
     var overPressure: Bool?
     var headDays: Int?
     var resetHead: Bool?
     var isEmpty: Bool {
-        scheme == nil && areaRemind == nil && remindSwitch == nil && overPressure == nil && headDays == nil && resetHead == nil
+        scheme == nil && areaRemind == nil && remindSwitch == nil && runningSwitch == nil && overPressure == nil && headDays == nil && resetHead == nil
     }
 }
 
