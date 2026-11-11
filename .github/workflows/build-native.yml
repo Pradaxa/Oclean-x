@@ -25,7 +25,7 @@ jobs:
           mkdir -p ios-native/Resources/web/assets ios-native/Resources/Assets.xcassets
           cp www/assets/denture.js www/assets/dentadura.glb www/assets/brush.png ios-native/Resources/web/assets/
           mkdir -p ios-native/Resources/web/assets/vendor
-          cp www/assets/vendor/three.module.min.js www/assets/vendor/GLTFLoader.js ios-native/Resources/web/assets/vendor/
+          cp www/assets/vendor/three.module.min.js www/assets/vendor/GLTFLoader.js www/assets/vendor/BufferGeometryUtils.js ios-native/Resources/web/assets/vendor/
           cp -R ios/App/App/Assets.xcassets/. ios-native/Resources/Assets.xcassets/
           rm -rf ios-native/Resources/Assets.xcassets/Splash.imageset
           ls -la ios-native/Resources/web/assets ios-native/Resources/web/assets/vendor
