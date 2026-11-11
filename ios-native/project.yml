@@ -41,7 +41,7 @@ targets:
         DEVELOPMENT_TEAM: ""
         CODE_SIGNING_ALLOWED: NO
   OcleanXUITests:
-    type: ui-test
+    type: bundle.ui-testing
     platform: iOS
     deploymentTarget: "15.0"
     sources:
