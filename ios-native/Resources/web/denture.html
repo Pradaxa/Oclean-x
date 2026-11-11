@@ -20,6 +20,10 @@ let mounted = false;
    los dientes se quedan blancos aunque haya zonas mal cepilladas. */
 let pending = null;
 let busy = false;
+let api = null; // instancia viva del render (rot/zoom los conduce SwiftUI)
+window.dragRot = function(dx, dy){ if (api && api.rot) api.rot(dx, dy); };
+window.pinchZoom = function(f){ if (api && api.zoomBy) api.zoomBy(f); };
+window.resetRot = function(){ if (api && api.resetRot) api.resetRot(); };
 window.setZones = async function(classes){
   pending = classes;
   if (busy) return;
@@ -27,8 +31,9 @@ window.setZones = async function(classes){
   while (pending !== null) {
     const cls = pending; pending = null;
     try{
-      if (mounted) { D.disposeAll(); mounted = false; }
-      await D.mountLive(cv, cls);
+      if (mounted) { D.disposeAll(); mounted = false; api = null; }
+      api = await D.mountLive(cv, cls);
+      if (api && api.disablePointerDrag) api.disablePointerDrag(); // los gestos llegan de SwiftUI
       mounted = true;
       var d = document.getElementById('diag'); if (d) d.remove();
     }catch(e){ console.error('setZones', e); }

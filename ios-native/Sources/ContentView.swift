@@ -55,12 +55,14 @@ struct GlassCard<Content: View>: View {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(LinearGradient(colors: [Color.white.opacity(0.07), Color.clear],
                                          startPoint: .topLeading, endPoint: .center))
+                    .allowsHitTesting(false) // decorativo: sin esto se come los toques del contenido
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .stroke(LinearGradient(colors: [Color.white.opacity(0.32), Color.white.opacity(0.07)],
                                            startPoint: .topLeading, endPoint: .bottomTrailing),
                             lineWidth: 1)
+                    .allowsHitTesting(false) // decorativo
             )
             .shadow(color: .black.opacity(0.35), radius: 16, x: 0, y: 8)
     }

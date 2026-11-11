@@ -109,7 +109,7 @@ struct HoyView: View {
                         }
                         .padding(6)
                         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial))
-                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.12), lineWidth: 1).allowsHitTesting(false))
 
                         if let s = shown {
                             GlassCard {

@@ -32,16 +32,18 @@ struct AjustesView: View {
 
                             HStack {
                                 Text("Modo de cepillado")
-                                Spacer()
+                                Spacer(minLength: 24)
                                 Picker("Modo", selection: Binding(
                                     get: { store.pending.scheme ?? store.brushMode ?? 0 },
                                     set: { store.pending.scheme = $0; store.save() })) {
                                     ForEach(SCHEMES.keys.sorted(), id: \.self) { k in
-                                        Text(SCHEMES[k]!.0).tag(k)
+                                        Text(SCHEMES[k]!.0).lineLimit(1).tag(k)
                                     }
                                 }
                                 .pickerStyle(.menu)
                                 .tint(Theme.accent)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false) // no partir el nombre del modo en dos líneas
                             }
 
                             Toggle("Aviso de zonas", isOn: Binding(

@@ -53,6 +53,16 @@ jobs:
           echo "Simulador: $DEVICE"
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
+          set +e
+          xcodebuild test \
+            -project OcleanXNative.xcodeproj \
+            -scheme OcleanX \
+            -destination "platform=iOS Simulator,id=$DEVICE" \
+            -derivedDataPath build-sim \
+            CODE_SIGNING_ALLOWED=NO \
+            -only-testing:OcleanXUITests 2>&1 | tee /tmp/uitest.log | grep -E "Test Case|Test Suite|passed|failed|error:"
+          echo "UITESTS_EXIT=${PIPESTATUS[0]}"
+          set -e
           APP=$(find build-sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "OcleanX.app")
           xcrun simctl install "$DEVICE" "$APP"
           BID=com.pradaxa.ocleanx

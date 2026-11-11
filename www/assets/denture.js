@@ -229,38 +229,57 @@ export async function mountLive(canvas, classes) {
   cam.lookAt(0, 0, 0);
 
   let rotY = 0, rotX = 0, tRotY = 0, tRotX = 0;
+  let zoom = 1, tZoom = 1; // zoom por pellizco (la app nativa lo conduce; en la web queda en 1)
   let dragging = false, px = 0, py = 0, raf = 0, dead = false;
+  let nativeDrag = false; // true en la app nativa: los gestos llegan por api.rot/zoomBy, no por pointer events
   function frame() {
     if (dead) return;
     rotY += (tRotY - rotY) * 0.16;
     rotX += (tRotX - rotX) * 0.16;
+    zoom += (tZoom - zoom) * 0.2;
     wrap.rotation.y = rotY;
     wrap.rotation.x = BASE_TILT + rotX;
+    cam.position.set(0, -0.6, dist / zoom);
+    cam.lookAt(0, 0, 0);
     renderer.render(scene, cam);
-    if (dragging || Math.abs(tRotY - rotY) > 0.0004 || Math.abs(tRotX - rotX) > 0.0004) raf = requestAnimationFrame(frame);
+    if (dragging || Math.abs(tRotY - rotY) > 0.0004 || Math.abs(tRotX - rotX) > 0.0004 || Math.abs(tZoom - zoom) > 0.001) raf = requestAnimationFrame(frame);
     else raf = 0;
   }
+  function rot(dx, dy) { // arrastre conducido por gestos nativos
+    tRotY += dx * 0.011;
+    tRotX = Math.max(-0.85, Math.min(0.85, tRotX + dy * 0.007));
+    if (!raf) raf = requestAnimationFrame(frame);
+  }
+  function zoomBy(f) { // pellizco conducido por gestos nativos
+    tZoom = Math.max(0.5, Math.min(3, tZoom * f));
+    if (!raf) raf = requestAnimationFrame(frame);
+  }
   function down(e) {
+    if (nativeDrag) return;
     dragging = true; px = e.clientX; py = e.clientY;
     if (canvas.setPointerCapture) try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     if (!raf) raf = requestAnimationFrame(frame);
   }
   function move(e) {
-    if (!dragging) return;
+    if (nativeDrag || !dragging) return;
     if (e.cancelable) e.preventDefault();
     tRotY += (e.clientX - px) * 0.011;
     tRotX = Math.max(-0.85, Math.min(0.85, tRotX + (e.clientY - py) * 0.007));
     px = e.clientX; py = e.clientY;
   }
   function up() { dragging = false; }
-  function reset() { tRotY = 0; tRotX = 0; if (!raf) raf = requestAnimationFrame(frame); } // posición 0
+  function reset() { tRotY = 0; tRotX = 0; tZoom = 1; if (!raf) raf = requestAnimationFrame(frame); } // posición 0
   canvas.addEventListener('dblclick', reset);
   canvas.addEventListener('pointerdown', down);
   canvas.addEventListener('pointermove', move);
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
   renderer.render(scene, cam); // estático hasta que se toca
-  const api = { dispose() { dead = true; cancelAnimationFrame(raf); liveByCanvas.delete(canvas); renderer.dispose(); } };
+  const api = {
+    dispose() { dead = true; cancelAnimationFrame(raf); liveByCanvas.delete(canvas); renderer.dispose(); },
+    rot, zoomBy, resetRot: reset,
+    disablePointerDrag() { nativeDrag = true; }
+  };
   liveByCanvas.set(canvas, api);
   liveAll.push(api);
   return api;

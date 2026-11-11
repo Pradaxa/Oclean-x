@@ -59,6 +59,7 @@ struct HistorialView: View {
                                             .contentShape(Rectangle())
                                         }
                                         .buttonStyle(.plain)
+                                        .accessibilityIdentifier("session-row")
                                         if i < list.count - 1 { Divider().background(Color.white.opacity(0.08)) }
                                     }
                                 }
@@ -106,6 +107,7 @@ struct SessionDetailSheet: View {
                                 .foregroundColor(.secondary)
                                 .symbolRenderingMode(.hierarchical)
                         }
+                        .accessibilityIdentifier("detail-close")
                     }
                     Text(schemeName(session.pnum)).font(.title2.bold())
                     Text("\(fmtDay(session.ts)) · \(fmtTime(session.ts))").foregroundColor(.secondary)
