@@ -159,6 +159,7 @@ final class BLEManager: NSObject, ObservableObject {
         p.delegate = self
         try await connect(p)
         defer { central.cancelPeripheralConnection(p) }
+        UserDefaults.standard.set(p.identifier.uuidString, forKey: savedBrushKey)
         dlog("conectado a \(p.name ?? "cepillo")")
 
         try await Task.sleep(nanoseconds: 2_000_000_000) // calentamiento GATT
@@ -375,10 +376,19 @@ final class BLEManager: NSObject, ObservableObject {
 
     /* ---------- Escaneo / conexión / descubrimiento ---------- */
 
+    private let savedBrushKey = "oclean.savedBrushID"
+
     private func scan() async throws -> CBPeripheral {
         // Si iOS ya lo tiene conectado (p. ej. la app oficial), úsalo directo
         if let p = central.retrieveConnectedPeripherals(withServices: [SVC]).first {
             dlog("cepillo ya conectado por el sistema: \(p.name ?? "?")")
+            return p
+        }
+        // Reconexión directa por identificador guardado: sin escanear.
+        if let idStr = UserDefaults.standard.string(forKey: savedBrushKey),
+           let uuid = UUID(uuidString: idStr),
+           let p = central.retrievePeripherals(withIdentifiers: [uuid]).first {
+            dlog("cepillo recuperado por id guardado, sin escanear")
             return p
         }
         // El cepillo no anuncia el UUID 128-bit en el paquete de advertising:

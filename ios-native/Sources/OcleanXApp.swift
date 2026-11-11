@@ -28,7 +28,13 @@ struct OcleanXApp: App {
                 .environmentObject(ble)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
-                .onAppear { ble.attach(store: store) }
+                .onAppear {
+                    ble.attach(store: store)
+                    // Sincronización automática al abrir: si el cepillo ya se
+                    // conectó alguna vez, reconecta por su identificador guardado
+                    // sin escanear; si no, lo busca.
+                    ble.sync()
+                }
         }
     }
 }
