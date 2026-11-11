@@ -1,9 +1,25 @@
 import SwiftUI
+import UIKit
 
 @main
 struct OcleanXApp: App {
     @StateObject private var store = BrushStore()
     @StateObject private var ble = BLEManager()
+
+    init() {
+        // En iOS < 26 damos a la tab bar un material de cristal oscuro.
+        // Compilando con Xcode 26, iOS 26 aplica Liquid Glass de serie y no
+        // hace falta (y mejor no tocar) la apariencia personalizada.
+        if #unavailable(iOS 26.0) {
+            let a = UITabBarAppearance()
+            a.configureWithTransparentBackground()
+            a.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+            a.backgroundColor = UIColor.black.withAlphaComponent(0.12)
+            a.shadowColor = UIColor.white.withAlphaComponent(0.08)
+            UITabBar.appearance().standardAppearance = a
+            UITabBar.appearance().scrollEdgeAppearance = a
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -14,25 +30,5 @@ struct OcleanXApp: App {
                 .tint(Theme.accent)
                 .onAppear { ble.attach(store: store) }
         }
-    }
-}
-
-enum Theme {
-    static let accent = Color(red: 1.0, green: 0.302, blue: 0.404)      // #ff4d67
-    static let cardBg = Color(red: 0.16, green: 0.08, blue: 0.10).opacity(0.72)
-    static let cardBorder = Color.white.opacity(0.12)
-    static let bgGradient = LinearGradient(
-        colors: [Color(red: 0.24, green: 0.07, blue: 0.12), Color(red: 0.086, green: 0.039, blue: 0.047)],
-        startPoint: .topLeading, endPoint: .bottomTrailing)
-}
-
-struct Card<Content: View>: View {
-    @ViewBuilder var content: Content
-    var body: some View {
-        content
-            .padding(16)
-            .background(Theme.cardBg)
-            .cornerRadius(18)
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Theme.cardBorder, lineWidth: 1))
     }
 }

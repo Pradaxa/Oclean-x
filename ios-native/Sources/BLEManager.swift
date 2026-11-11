@@ -23,6 +23,41 @@ final class BLEManager: NSObject, ObservableObject {
     @Published var connecting = false
     @Published var status = "Cepillo sin conectar"
     @Published var statusBusy = false
+    @Published var offerScanAll = false
+    @Published var logLines: [String] = []
+
+    private var scanAll = false
+    private let logURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("ble-log.txt")
+
+    var fullLogText: String { logLines.joined(separator: "\n") }
+
+    /* Registro de diagnóstico persistente (equivalente al panel Diagnóstico de la web) */
+    func dlog(_ msg: String) {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
+        let line = "[\(f.string(from: Date()))] \(msg)"
+        Task { @MainActor in
+            self.logLines.append(line)
+            if self.logLines.count > 600 { self.logLines.removeFirst(self.logLines.count - 600) }
+        }
+        guard let data = (line + "\n").data(using: .utf8) else { return }
+        if FileManager.default.fileExists(atPath: logURL.path),
+           let h = try? FileHandle(forWritingTo: logURL) {
+            h.seekToEndOfFile(); h.write(data); try? h.close()
+        } else {
+            try? data.write(to: logURL)
+        }
+    }
+
+    private func loadLog() {
+        guard let d = try? Data(contentsOf: logURL), let s = String(data: d, encoding: .utf8) else { return }
+        let lines = s.split(separator: "\n").map(String.init)
+        Task { @MainActor in self.logLines = Array(lines.suffix(600)) }
+    }
+
+    func clearLog() {
+        Task { @MainActor in self.logLines = [] }
+        try? FileManager.default.removeItem(at: logURL)
+    }
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
@@ -50,7 +85,16 @@ final class BLEManager: NSObject, ObservableObject {
         central = CBCentralManager(delegate: self, queue: nil)
     }
 
-    func attach(store: BrushStore) { self.store = store }
+    func attach(store: BrushStore) {
+        self.store = store
+        loadLog()
+        if let ls = store.lastSync {
+            var base = "Última sincronización: \(fmtDay(ls)) · \(fmtTime(ls))"
+            if store.lastSess == 0 { base += " · sin sesiones nuevas en el cepillo" }
+            else if store.lastSess > 0 { base += " · \(store.lastSess) \(store.lastSess == 1 ? "nueva" : "nuevas")" }
+            status = base
+        }
+    }
 
     @MainActor private func setStatus(_ s: String, busy: Bool) {
         status = s; statusBusy = busy
@@ -63,9 +107,12 @@ final class BLEManager: NSObject, ObservableObject {
         }
     }
 
-    func sync() {
+    func sync(allDevices: Bool = false) {
         guard !connecting else { return }
         connecting = true
+        scanAll = allDevices
+        Task { @MainActor in self.offerScanAll = false }
+        dlog(allDevices ? "--- sync inicio (búsqueda amplia) ---" : "--- sync inicio ---")
         Task {
             await setStatus("Buscando el cepillo…", busy: true)
             do {
@@ -76,6 +123,8 @@ final class BLEManager: NSObject, ObservableObject {
                 else { await setStatus("Sincronizado", busy: false) }
             } catch SyncError.notFound {
                 await setStatus("No apareció. Despierta el cepillo (levántalo) y reintenta", busy: false)
+                await MainActor.run { self.offerScanAll = !allDevices }
+                dlog("cepillo no encontrado (timeout escaneo)")
             } catch SyncError.bluetoothOff {
                 await setStatus("Activa el Bluetooth del iPhone", busy: false)
             } catch {
@@ -95,11 +144,16 @@ final class BLEManager: NSObject, ObservableObject {
         p.delegate = self
         try await connect(p)
         defer { central.cancelPeripheralConnection(p) }
+        dlog("conectado a \(p.name ?? "cepillo")")
 
         try await Task.sleep(nanoseconds: 2_000_000_000) // calentamiento GATT
 
         try await discover(p)
-        guard let svc = p.services?.first(where: { $0.uuid == SVC }) else { throw SyncError.connectFailed }
+        dlog("servicios: \((p.services ?? []).map { $0.uuid.uuidString }.joined(separator: ","))")
+        guard let svc = p.services?.first(where: { $0.uuid == SVC }) else {
+            dlog("servicio principal NO encontrado")
+            throw SyncError.connectFailed
+        }
         try await discoverChars(svc, uuids: [C_WRITE, C_NOTIFY, C_SEND, C_RECV], on: p)
         if let bs = p.services?.first(where: { $0.uuid == BATT_SVC }) {
             try? await discoverChars(bs, uuids: [BATT_CHAR], on: p)
@@ -126,13 +180,17 @@ final class BLEManager: NSObject, ObservableObject {
                 UInt8(cal.component(.minute, from: now)), UInt8(cal.component(.second, from: now)),
                 UInt8(cal.component(.weekday, from: now) - 1 < 0 ? 0 : (cal.component(.weekday, from: now) - 1) % 7), tzIndex()]
             _ = dow
-            try? await write(pkt, to: w, on: p)
+            let okCal = try? await write(pkt, to: w, on: p)
+            dlog("calibración hora -> fbb85: \(okCal == true ? "OK" : "error")")
         }
 
         // 2) Modelo (DIS), informativo
         if let mc = chars[DIS_MODEL], let mv = try? await read(mc, on: p) {
             let s = String(decoding: mv, as: UTF8.self).split(separator: "\0").first.map(String.init) ?? ""
             await MainActor.run { store?.model = s }
+            dlog("modelo DIS: \(s)")
+        } else {
+            dlog("DIS no disponible")
         }
 
         // 4) Comandos por fbb89
@@ -140,12 +198,14 @@ final class BLEManager: NSObject, ObservableObject {
             try? await write([0x03, 0x03], to: send, on: p); try? await Task.sleep(nanoseconds: 150_000_000)
             try? await write([0x03, 0x02, 0x01], to: send, on: p); try? await Task.sleep(nanoseconds: 150_000_000)
             try? await write([0x03, 0x07], to: send, on: p); try? await Task.sleep(nanoseconds: 150_000_000)
+            dlog("cmds 0303/0302/0307 enviados -> fbb89")
         }
 
         // 4c) Ajustes pendientes (standalone -> fbb85)
         if let w = chars[C_WRITE], let st = store {
             let pend = await MainActor.run { st.pending }
             if !pend.isEmpty {
+                dlog("aplicando ajustes pendientes")
                 var allOk = true
                 if let scheme = pend.scheme, let pkts = buildSchemePackets(scheme) {
                     for pkt in pkts {
@@ -170,7 +230,8 @@ final class BLEManager: NSObject, ObservableObject {
                 if pend.resetHead == true {
                     if await writeOK([0x02, 0x0f], to: w, on: p) { await MainActor.run { st.headTimes = 0 } } else { allOk = false }
                 }
-                if allOk { await MainActor.run { st.pending = PendingSettings(); st.save() } }
+                if allOk { await MainActor.run { st.pending = PendingSettings(); st.save() }; dlog("ajustes aplicados") }
+                else { dlog("algunos ajustes no se pudieron enviar; quedan pendientes") }
             }
         }
 
@@ -184,14 +245,22 @@ final class BLEManager: NSObject, ObservableObject {
         }
         if t1Active { flushT1() }
         await MainActor.run { store?.lastSess = sessFetched }
+        dlog("espera terminada; sesiones recibidas esta sync: \(sessFetched)")
         try? await Task.sleep(nanoseconds: 1_500_000_000) // pushes 0000/2604/5a00 llegan después
 
         // 6) Batería estándar BLE
         if let bc = chars[BATT_CHAR], let bv = try? await read(bc, on: p), bv.count > 0 {
             await MainActor.run { store?.battery = Int(bv[0]) }
+            dlog("batería 0x2A19: \(Int(bv[0]))%")
+        } else {
+            dlog("batería 0x2A19 no leída")
         }
 
-        await MainActor.run { store?.sortSessions(); store?.save() }
+        await MainActor.run {
+            store?.lastSync = Date().timeIntervalSince1970 * 1000
+            store?.sortSessions(); store?.save()
+        }
+        dlog("--- sync fin ---")
     }
 
     private func writeOK(_ bytes: [UInt8], to c: CBCharacteristic, on p: CBPeripheral) async -> Bool {
@@ -210,7 +279,7 @@ final class BLEManager: NSObject, ObservableObject {
     private func scan() async throws -> CBPeripheral {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CBPeripheral, Error>) in
             scanCont = cont
-            central.scanForPeripherals(withServices: [SVC], options: nil)
+            central.scanForPeripherals(withServices: scanAll ? nil : [SVC], options: nil)
             Task {
                 try? await Task.sleep(nanoseconds: 12_000_000_000)
                 if let c = scanCont {
@@ -430,7 +499,8 @@ extension BLEManager: CBCentralManagerDelegate {
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let name = p.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? ""
         guard let c = scanCont else { return }
-        // Escaneamos filtrando por el servicio Oclean; cualquier descubrimiento es candidato
+        // Con búsqueda amplia (sin filtro de servicio) solo vale un nombre Oclean
+        if scanAll && !name.lowercased().contains("oclean") { return }
         scanCont = nil
         central.stopScan()
         c.resume(returning: p)

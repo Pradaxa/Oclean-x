@@ -1,0 +1,106 @@
+name: build-native-ios-glass
+
+# Build con el runner que hoy resuelve a macos-26-arm64 + Xcode 26
+# (el mismo label que usa menu-semanal: macos-latest). Con el SDK 26 los
+# componentes del sistema adoptan Liquid Glass real en iOS 26.
+# Solo manual: se dispara cuando queremos probar el build glass.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ios-native-glass:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcodebuild -runFirstLaunch || true
+
+      - name: Preparar recursos (3D web + icono)
+        run: |
+          mkdir -p ios-native/Resources/web/assets ios-native/Resources/Assets.xcassets
+          cp www/assets/denture.js www/assets/dentadura.glb www/assets/brush.png ios-native/Resources/web/assets/
+          mkdir -p ios-native/Resources/web/assets/vendor
+          cp www/assets/vendor/three.module.min.js www/assets/vendor/GLTFLoader.js www/assets/vendor/BufferGeometryUtils.js ios-native/Resources/web/assets/vendor/
+          cp -R ios/App/App/Assets.xcassets/. ios-native/Resources/Assets.xcassets/
+          rm -rf ios-native/Resources/Assets.xcassets/Splash.imageset
+          ls -la ios-native/Resources/web/assets ios-native/Resources/web/assets/vendor
+
+      - name: XcodeGen
+        run: |
+          brew install xcodegen
+          cd ios-native && xcodegen
+
+      - name: Simulator build + capturas
+        run: |
+          set -e
+          cd ios-native
+          xcodebuild \
+            -project OcleanXNative.xcodeproj \
+            -scheme OcleanX \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-sim \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          DEVICE=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("iPhone"))] | ([.[] | select(.name | test("Pro Max"))] + [.[]]) | .[0].udid')
+          echo "Simulador: $DEVICE"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          APP=$(find build-sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "OcleanX.app")
+          xcrun simctl install "$DEVICE" "$APP"
+          BID=com.pradaxa.ocleanx
+          xcrun simctl ui "$DEVICE" appearance dark
+          mkdir -p shots
+          xcrun simctl launch "$DEVICE" "$BID" -seedDemo -openTab hoy >/dev/null 2>&1 || true
+          sleep 45
+          xcrun simctl io "$DEVICE" screenshot "shots/glass-hoy.png" || true
+          xcrun simctl terminate "$DEVICE" "$BID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$DEVICE" "$BID" -seedDemo -openTab historial -openDetail >/dev/null 2>&1 || true
+          sleep 30
+          xcrun simctl io "$DEVICE" screenshot "shots/glass-detalle.png" || true
+          xcrun simctl terminate "$DEVICE" "$BID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$DEVICE" "$BID" -seedDemo -openTab ajustes >/dev/null 2>&1 || true
+          sleep 12
+          xcrun simctl io "$DEVICE" screenshot "shots/glass-ajustes.png" || true
+          ls -la shots/
+
+      - name: Subir capturas
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-native-glass
+          path: ios-native/shots/
+          if-no-files-found: ignore
+
+      - name: Build IPA (unsigned)
+        run: |
+          cd ios-native
+          xcodebuild \
+            -project OcleanXNative.xcodeproj \
+            -scheme OcleanX \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="0.3.${{ github.run_number }}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R "ios-native/build/Build/Products/Release-iphoneos/OcleanX.app" Payload/
+          zip -r -q OcleanX-native-glass.ipa Payload
+          ls -lh OcleanX-native-glass.ipa
+
+      - name: Guardar IPA nativa (glass)
+        uses: actions/upload-artifact@v4
+        with:
+          name: oclean-ipa-nativa-glass
+          path: OcleanX-native-glass.ipa

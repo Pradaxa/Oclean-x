@@ -126,6 +126,7 @@ final class BrushStore: ObservableObject {
     @Published var model: String? = nil
     @Published var pending = PendingSettings()
     @Published var lastSess: Int = -1
+    @Published var lastSync: Double? = nil
 
     private var fileURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("store.json")
@@ -135,12 +136,19 @@ final class BrushStore: ObservableObject {
         var sessions: [BrushSession]
         var battery: Int?; var headDays: Int?; var headTimes: Int?
         var brushMode: Int?; var overPressure: Bool; var areaRemind: Bool
-        var model: String?; var pending: PendingSettings
+        var model: String?; var pending: PendingSettings; var lastSync: Double?
     }
 
     init() {
         load()
-        if sessions.isEmpty { sessions = Self.samples() }
+        // Datos de demostración solo para capturas del simulador (-seedDemo); no se guardan.
+        if ProcessInfo.processInfo.arguments.contains("-seedDemo") {
+            sessions = Self.samples()
+            battery = 82; headDays = 90; headTimes = 12
+            brushMode = 0; model = "OCLEANY3"
+            areaRemind = true; overPressure = true
+            lastSync = Date().timeIntervalSince1970 * 1000; lastSess = 0
+        }
     }
 
     static func samples() -> [BrushSession] {
@@ -182,10 +190,33 @@ final class BrushStore: ObservableObject {
         return sessions.filter { cal.isDate(Date(timeIntervalSince1970: $0.ts/1000), inSameDayAs: day) }
     }
 
+    /* ---------- Datos: exportar / restaurar / borrar (port de doExport/doImport/doWipe) ---------- */
+
+    func exportData() -> Data? {
+        try? JSONEncoder().encode(sessions)
+    }
+
+    @discardableResult
+    func importData(_ data: Data) -> Int {
+        guard let arr = try? JSONDecoder().decode([BrushSession].self, from: data) else { return -1 }
+        var n = 0
+        for s in arr where mergeSession(s) { n += 1 }
+        sortSessions(); save()
+        return n
+    }
+
+    func wipe() {
+        sessions = []; battery = nil; headTimes = nil; headDays = nil
+        model = nil; lastSync = nil; lastSess = -1
+        brushMode = nil; areaRemind = false; overPressure = false
+        pending = PendingSettings()
+        save()
+    }
+
     func save() {
         let p = Persisted(sessions: sessions, battery: battery, headDays: headDays, headTimes: headTimes,
                           brushMode: brushMode, overPressure: overPressure, areaRemind: areaRemind,
-                          model: model, pending: pending)
+                          model: model, pending: pending, lastSync: lastSync)
         if let d = try? JSONEncoder().encode(p) { try? d.write(to: fileURL, options: .atomic) }
     }
 
@@ -194,7 +225,7 @@ final class BrushStore: ObservableObject {
               let p = try? JSONDecoder().decode(Persisted.self, from: d) else { return }
         sessions = p.sessions; battery = p.battery; headDays = p.headDays; headTimes = p.headTimes
         brushMode = p.brushMode; overPressure = p.overPressure; areaRemind = p.areaRemind
-        model = p.model; pending = p.pending
+        model = p.model; pending = p.pending; lastSync = p.lastSync
     }
 }
 

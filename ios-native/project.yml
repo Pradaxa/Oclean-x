@@ -26,6 +26,9 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSBluetoothAlwaysUsageDescription: Oclean X usa Bluetooth para conectar con tu cepillo y sincronizar tus cepillados.
+        # Sin modo de compatibilidad: si el sistema ofrece el diseño del SO (Liquid Glass en iOS 26), úsalo.
+        UIDesignRequiresCompatibility: false
+        ITSAppUsesNonExemptEncryption: false
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
     settings:
