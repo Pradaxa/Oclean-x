@@ -263,6 +263,24 @@ final class BLEManager: NSObject, ObservableObject {
                 if let v = pend.runningSwitch {
                     if !(await writeOK([0x02, 0x40, v ? 1 : 0], to: w, on: p)) { allOk = false }
                 }
+                // Experimentales: valores acotados y reversibles; se anotan en el registro
+                if let v = pend.wakeGesture {
+                    let ok = await writeOK([0x02, 0x09, v ? 0x01 : 0xEC], to: w, on: p)
+                    dlog("experimental gesto activacion -> \(v ? "01" : "EC"): \(ok ? "enviado" : "fallo")")
+                    if !ok { allOk = false }
+                }
+                if let b = pend.brightness {
+                    let v = max(5, min(100, b))
+                    let ok = await writeOK([0x02, 0x0C, UInt8(v)], to: w, on: p)
+                    dlog("experimental brillo -> \(v): \(ok ? "enviado" : "fallo")")
+                    if !ok { allOk = false }
+                }
+                if let ms = pend.motorSpeed {
+                    let v = max(0, min(100, ms))
+                    let ok = await writeOK([0x02, 0x07, 0, 0, UInt8((v >> 8) & 0xff), UInt8(v & 0xff)], to: w, on: p)
+                    dlog("experimental velocidad motor -> \(v): \(ok ? "enviado" : "fallo")")
+                    if !ok { allOk = false }
+                }
                 if let v = pend.overPressure {
                     if await writeOK([0x02, 0x12, v ? 1 : 0], to: w, on: p) { await MainActor.run { st.overPressure = v } } else { allOk = false }
                 }

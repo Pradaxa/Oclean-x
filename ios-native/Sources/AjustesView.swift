@@ -12,6 +12,8 @@ struct AjustesView: View {
     @State private var showWipeConfirm = false
     @State private var notice: String? = nil
     @State private var copied = false
+    @State private var brightnessVal: Double = 50
+    @State private var motorVal: Double = 50
 
     var body: some View {
         ZStack {
@@ -92,6 +94,41 @@ struct AjustesView: View {
                                 Text("Verificación con el cepillo: \(chk)")
                                     .font(.caption).foregroundColor(.secondary)
                             }
+                        }
+                    }
+
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Experimental").font(.headline)
+                            Toggle("Gesto de activación", isOn: Binding(
+                                get: { store.pending.wakeGesture ?? true },
+                                set: { store.pending.wakeGesture = $0; store.save(); notice = "Se aplicará en la próxima sincronización" })).tint(Theme.accent)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Brillo de pantalla")
+                                    Spacer()
+                                    Text("\(Int(brightnessVal))%").foregroundColor(.secondary).font(.subheadline)
+                                }
+                                Slider(value: $brightnessVal, in: 5...100, step: 1) { editing in
+                                    if !editing { store.pending.brightness = Int(brightnessVal); store.save(); notice = "Se aplicará en la próxima sincronización" }
+                                }.tint(Theme.accent)
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Velocidad del motor")
+                                    Spacer()
+                                    Text("\(Int(motorVal))").foregroundColor(.secondary).font(.subheadline)
+                                }
+                                Slider(value: $motorVal, in: 0...100, step: 1) { editing in
+                                    if !editing { store.pending.motorSpeed = Int(motorVal); store.save(); notice = "Se aplicará en la próxima sincronización" }
+                                }.tint(Theme.accent)
+                            }
+                            Text("Estos ajustes no están confirmados para el Oclean X. Se envían acotados a valores seguros y reversibles; lo que responda el cepillo queda en Diagnóstico. Si alguno no hace nada, simplemente no es compatible.")
+                                .font(.footnote).foregroundColor(.secondary)
+                        }
+                        .onAppear {
+                            if let b = store.pending.brightness { brightnessVal = Double(b) }
+                            if let m = store.pending.motorSpeed { motorVal = Double(m) }
                         }
                     }
 
