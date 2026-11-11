@@ -59,9 +59,32 @@ struct HoyView: View {
                     }
 
                     if ble.offerScanAll {
-                        Button("Buscar entre todos los dispositivos") { ble.sync(allDevices: true) }
-                            .glassGhostButton()
-                            .frame(maxWidth: .infinity, alignment: .center)
+                        if ble.candidates.isEmpty {
+                            Text("No se vio ningún dispositivo Bluetooth cerca. Despierta el cepillo y reintenta.")
+                                .font(.footnote).foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        } else {
+                            GlassCard {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Elige tu cepillo").font(.headline)
+                                    ForEach(ble.candidates) { c in
+                                        Button(action: { ble.connectCandidate(c) }) {
+                                            HStack(spacing: 10) {
+                                                Image(systemName: "wave.3.right")
+                                                Text(c.name)
+                                                Spacer()
+                                                Image(systemName: "chevron.right").font(.caption)
+                                            }
+                                            .foregroundColor(.white)
+                                            .padding(.vertical, 6)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Cepillados de hoy

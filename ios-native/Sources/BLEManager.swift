@@ -26,7 +26,10 @@ final class BLEManager: NSObject, ObservableObject {
     @Published var offerScanAll = false
     @Published var logLines: [String] = []
 
-    private var scanAll = false
+    struct BleCandidate: Identifiable { let id: UUID; let name: String }
+    @Published var candidates: [BleCandidate] = []
+    private var candidatesStore: [UUID: CBPeripheral] = [:]
+
     private let logURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("ble-log.txt")
 
     var fullLogText: String { logLines.joined(separator: "\n") }
@@ -71,6 +74,7 @@ final class BLEManager: NSObject, ObservableObject {
     private var writeCont: [CBUUID: CheckedContinuation<Void, Error>] = [:]
     private var readCont: [CBUUID: CheckedContinuation<Data, Error>] = [:]
     private var notifyCont: [CBUUID: CheckedContinuation<Void, Error>] = [:]
+    private var descCont: [CBUUID: CheckedContinuation<Void, Error>] = [:]
     private var centralReady: CheckedContinuation<Void, Never>?
 
     // Estado de la recogida de sesiones
@@ -107,23 +111,34 @@ final class BLEManager: NSObject, ObservableObject {
         }
     }
 
-    func sync(allDevices: Bool = false) {
+    func sync() {
         guard !connecting else { return }
         connecting = true
-        scanAll = allDevices
         Task { @MainActor in self.offerScanAll = false }
-        dlog(allDevices ? "--- sync inicio (búsqueda amplia) ---" : "--- sync inicio ---")
+        dlog("--- sync inicio ---")
+        runWithStatus(known: nil)
+    }
+
+    func connectCandidate(_ c: BleCandidate) {
+        guard !connecting, let p = candidatesStore[c.id] else { return }
+        connecting = true
+        Task { @MainActor in self.offerScanAll = false }
+        dlog("conectando con candidato: \(c.name)")
+        runWithStatus(known: p)
+    }
+
+    private func runWithStatus(known: CBPeripheral?) {
         Task {
             await setStatus("Buscando el cepillo…", busy: true)
             do {
-                try await runSync()
+                try await runSync(known: known)
                 let n = store?.lastSess ?? -1
                 if n == 0 { await setStatus("Sincronizado · sin sesiones nuevas en el cepillo", busy: false) }
                 else if n > 0 { await setStatus("Sincronizado · \(n) \(n == 1 ? "sesión nueva" : "sesiones nuevas")", busy: false) }
                 else { await setStatus("Sincronizado", busy: false) }
             } catch SyncError.notFound {
                 await setStatus("No apareció. Despierta el cepillo (levántalo) y reintenta", busy: false)
-                await MainActor.run { self.offerScanAll = !allDevices }
+                await MainActor.run { self.offerScanAll = true }
                 dlog("cepillo no encontrado (timeout escaneo)")
             } catch SyncError.bluetoothOff {
                 await setStatus("Activa el Bluetooth del iPhone", busy: false)
@@ -134,12 +149,12 @@ final class BLEManager: NSObject, ObservableObject {
         }
     }
 
-    private func runSync() async throws {
+    private func runSync(known: CBPeripheral? = nil) async throws {
         await ready()
         guard central.state == .poweredOn else { throw SyncError.bluetoothOff }
 
-        // Escanear por servicio; si no aparece, también por nombre "Oclean"
-        let p = try await scan()
+        let p: CBPeripheral
+        if let k = known { p = k } else { p = try await scan() }
         peripheral = p
         p.delegate = self
         try await connect(p)
@@ -165,12 +180,8 @@ final class BLEManager: NSObject, ObservableObject {
         t1Active = false; t1Buf = []; t1Expected = 0
         sessFetched = 0; lastHex = [:]
 
-        // Suscripciones antes de cualquier escritura
-        if let c = chars[C_NOTIFY] { try? await subscribe(c, on: p) }
-        if let c = chars[C_RECV] { try? await subscribe(c, on: p) }
-        if let c = chars[BATT_CHAR] { try? await subscribe(c, on: p) }
-
-        // 1) Calibración de hora (0201 + 8 bytes -> fbb85)
+        // 1) Calibración de hora (0201 + 8 bytes -> fbb85) ANTES de suscribir:
+        //    hay firmwares que solo habilitan los CCCD tras el primer comando.
         if let w = chars[C_WRITE] {
             let now = Date(); let cal = Calendar.current
             let dow = (cal.component(.weekday, from: now) + 6) % 7 // web: getDay()%7 (domingo=0)
@@ -193,12 +204,41 @@ final class BLEManager: NSObject, ObservableObject {
             dlog("DIS no disponible")
         }
 
+        // 3) Suscripciones: TODAS las notificables del servicio principal,
+        //    con descubrimiento de descriptores (evidencia de si existe CCCD)
+        var recvOK = false
+        for c in (svc.characteristics ?? []) where c.properties.contains(.notify) || c.properties.contains(.indicate) {
+            await describe(c, on: p)
+            do {
+                try await subscribe(c, on: p)
+                dlog("subscribe \(short(c.uuid)) OK")
+                if c.uuid == C_RECV { recvOK = true }
+            } catch {
+                dlog("subscribe \(short(c.uuid)) error: \(error.localizedDescription)")
+            }
+        }
+        if let c = chars[BATT_CHAR] { try? await subscribe(c, on: p) }
+
         // 4) Comandos por fbb89
         if let send = chars[C_SEND] {
             try? await write([0x03, 0x03], to: send, on: p); try? await Task.sleep(nanoseconds: 150_000_000)
             try? await write([0x03, 0x02, 0x01], to: send, on: p); try? await Task.sleep(nanoseconds: 150_000_000)
             try? await write([0x03, 0x07], to: send, on: p); try? await Task.sleep(nanoseconds: 150_000_000)
             dlog("cmds 0303/0302/0307 enviados -> fbb89")
+        }
+
+        // 4r) Si fbb90 no suscribió: reintento tras los comandos y re-lanzamos 0307
+        if !recvOK, let rc = chars[C_RECV] {
+            do {
+                try await subscribe(rc, on: p)
+                dlog("subscribe fbb90 reintento OK")
+                if let send = chars[C_SEND] {
+                    try? await write([0x03, 0x07], to: send, on: p)
+                    dlog("0307 re-enviado tras suscribir fbb90")
+                }
+            } catch {
+                dlog("subscribe fbb90 reintento error: \(error.localizedDescription)")
+            }
         }
 
         // 4c) Ajustes pendientes (standalone -> fbb85)
@@ -263,6 +303,29 @@ final class BLEManager: NSObject, ObservableObject {
         dlog("--- sync fin ---")
     }
 
+    private func short(_ u: CBUUID) -> String { String(u.uuidString.suffix(5)).lowercased() }
+
+    private func describe(_ c: CBCharacteristic, on p: CBPeripheral) async {
+        do {
+            try await discoverDesc(c, on: p)
+            let ds = (c.descriptors ?? []).map { $0.uuid.uuidString }.joined(separator: ",")
+            dlog("desc \(short(c.uuid)): [\(ds)]")
+        } catch {
+            dlog("desc \(short(c.uuid)) error: \(error.localizedDescription)")
+        }
+    }
+
+    private func discoverDesc(_ c: CBCharacteristic, on p: CBPeripheral) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            descCont[c.uuid] = cont
+            p.discoverDescriptors(for: c)
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if let k = descCont[c.uuid] { descCont[c.uuid] = nil; k.resume(throwing: SyncError.connectFailed) }
+            }
+        }
+    }
+
     private func writeOK(_ bytes: [UInt8], to c: CBCharacteristic, on p: CBPeripheral) async -> Bool {
         (try? await write(bytes, to: c, on: p)) != nil
     }
@@ -277,9 +340,18 @@ final class BLEManager: NSObject, ObservableObject {
     /* ---------- Escaneo / conexión / descubrimiento ---------- */
 
     private func scan() async throws -> CBPeripheral {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CBPeripheral, Error>) in
+        // Si iOS ya lo tiene conectado (p. ej. la app oficial), úsalo directo
+        if let p = central.retrieveConnectedPeripherals(withServices: [SVC]).first {
+            dlog("cepillo ya conectado por el sistema: \(p.name ?? "?")")
+            return p
+        }
+        // El cepillo no anuncia el UUID 128-bit en el paquete de advertising:
+        // escaneamos sin filtro y lo reconocemos por nombre "Oclean" o servicio anunciado.
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CBPeripheral, Error>) in
             scanCont = cont
-            central.scanForPeripherals(withServices: scanAll ? nil : [SVC], options: nil)
+            Task { @MainActor in self.candidates = [] }
+            self.candidatesStore = [:]
+            central.scanForPeripherals(withServices: nil, options: nil)
             Task {
                 try? await Task.sleep(nanoseconds: 12_000_000_000)
                 if let c = scanCont {
@@ -498,11 +570,20 @@ extension BLEManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover p: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let name = p.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? ""
-        guard let c = scanCont else { return }
-        // Con búsqueda amplia (sin filtro de servicio) solo vale un nombre Oclean
-        if scanAll && !name.lowercased().contains("oclean") { return }
+        let advSvc = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
+        let isOclean = name.lowercased().contains("oclean") || advSvc.contains(SVC)
+        if !name.isEmpty {
+            candidatesStore[p.identifier] = p
+            Task { @MainActor in
+                if !self.candidates.contains(where: { $0.id == p.identifier }) {
+                    self.candidates.append(BleCandidate(id: p.identifier, name: name))
+                }
+            }
+        }
+        guard let c = scanCont, isOclean else { return }
         scanCont = nil
         central.stopScan()
+        dlog("encontrado: \(name.isEmpty ? p.identifier.uuidString : name)")
         c.resume(returning: p)
     }
 
@@ -535,6 +616,13 @@ extension BLEManager: CBPeripheralDelegate {
         }
     }
 
+    func peripheral(_ p: CBPeripheral, didDiscoverDescriptorsFor c: CBCharacteristic, error: Error?) {
+        if let k = descCont[c.uuid] {
+            descCont[c.uuid] = nil
+            if let e = error { k.resume(throwing: e) } else { k.resume() }
+        }
+    }
+
     func peripheral(_ p: CBPeripheral, didUpdateNotificationStateFor c: CBCharacteristic, error: Error?) {
         if let k = notifyCont[c.uuid] {
             notifyCont[c.uuid] = nil
@@ -561,6 +649,10 @@ extension BLEManager: CBPeripheralDelegate {
         }
         let d = [UInt8](v)
         if c.uuid == BATT_CHAR { Task { @MainActor in self.store?.battery = Int(d.first ?? 0) }; return }
+        if !(t1Active && c.uuid == C_RECV) {
+            let preview = d.count > 20 ? hex(Array(d.prefix(20))) + "…" : hex(d)
+            dlog("notif \(short(c.uuid)) [\(d.count)B]: \(preview)")
+        }
         dispatch(d, isRecv: c.uuid == C_RECV)
     }
 }
