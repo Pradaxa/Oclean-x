@@ -40,7 +40,7 @@ jobs:
             -derivedDataPath build-sim \
             CODE_SIGNING_ALLOWED=NO \
             build
-          DEVICE=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("iPhone"))] | sort_by(.name) | .[-1].udid')
+          DEVICE=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("iPhone"))] | ([.[] | select(.name | test("Pro Max"))] + [.[]]) | .[0].udid')
           echo "Simulador: $DEVICE"
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
