@@ -58,11 +58,11 @@ jobs:
           BID=com.pradaxa.ocleanx
           xcrun simctl ui "$DEVICE" appearance dark
           mkdir -p shots
-          xcrun simctl launch "$DEVICE" "$BID" -seedDemo -openTab hoy >/dev/null 2>&1 || true
+          xcrun simctl launch "$DEVICE" "$BID" -seedDemo -hoySelectBad -openTab hoy >/dev/null 2>&1 || true
           sleep 45
           xcrun simctl io "$DEVICE" screenshot "shots/glass-hoy.png" || true
           xcrun simctl terminate "$DEVICE" "$BID" >/dev/null 2>&1 || true
-          xcrun simctl launch "$DEVICE" "$BID" -seedDemo -openTab historial -openDetail >/dev/null 2>&1 || true
+          xcrun simctl launch "$DEVICE" "$BID" -seedDemo -openTab historial -openDetailBad >/dev/null 2>&1 || true
           sleep 30
           xcrun simctl io "$DEVICE" screenshot "shots/glass-detalle.png" || true
           xcrun simctl terminate "$DEVICE" "$BID" >/dev/null 2>&1 || true

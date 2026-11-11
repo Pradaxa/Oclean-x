@@ -149,6 +149,14 @@ struct HoyView: View {
                 .padding(.bottom, 30)
             }
         }
+        .onAppear {
+            // Solo capturas del simulador: mostrar una sesión con zonas mal cepilladas.
+            let a = ProcessInfo.processInfo.arguments
+            if a.contains("-hoySelectBad"), selected == nil,
+               let bad = todaySessions.first(where: { (zoneClasses($0) ?? []).contains(.bad) }) {
+                selected = bad
+            }
+        }
     }
 
     private var headText: String {

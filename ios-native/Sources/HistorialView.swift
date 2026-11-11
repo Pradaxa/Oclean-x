@@ -80,7 +80,10 @@ struct HistorialView: View {
         }
         .onAppear {
             let a = ProcessInfo.processInfo.arguments
-            if a.contains("-openDetail"), detail == nil, let first = shown.first {
+            if a.contains("-openDetailBad"), detail == nil,
+               let bad = shown.first(where: { (zoneClasses($0) ?? []).contains(.bad) }) {
+                detail = bad
+            } else if a.contains("-openDetail"), detail == nil, let first = shown.first {
                 detail = first
             }
         }
