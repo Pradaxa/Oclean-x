@@ -74,6 +74,19 @@ struct DentureView: UIViewRepresentable {
             if let p = pending { apply(classes: p); pending = nil }
         }
 
+        private func showError(_ webView: WKWebView, _ msg: String) {
+            let html = "<html><body style=\"background:transparent;color:#e0455a;font:13px -apple-system;padding:12px\">3D no cargó: \(msg)</body></html>"
+            webView.loadHTMLString(html, baseURL: nil)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            showError(webView, error.localizedDescription)
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            showError(webView, error.localizedDescription)
+        }
+
         func apply(classes: [ZoneClass]?) {
             guard loaded, let wv = webView else { pending = classes; return }
             let arr = (classes ?? Array(repeating: .none, count: 8)).map { "\"\($0.rawValue)\"" }.joined(separator: ",")

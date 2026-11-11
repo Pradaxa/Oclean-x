@@ -52,6 +52,9 @@ jobs:
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
           APP=$(find build-sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "OcleanX.app")
+          echo '--- contenido web dentro del bundle:'
+          find "$APP" -name 'denture.html' -o -name 'dentadura.glb' -o -name 'three.module.min.js' | head -10
+          ls -la "$APP/web" 2>/dev/null || echo 'NO EXISTE web/ en el bundle'
           xcrun simctl install "$DEVICE" "$APP"
           BID=com.pradaxa.ocleanx
           xcrun simctl ui "$DEVICE" appearance dark
