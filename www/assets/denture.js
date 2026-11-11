@@ -280,7 +280,11 @@ export async function mountLive(canvas, classes) {
   const api = {
     dispose() { dead = true; cancelAnimationFrame(raf); liveByCanvas.delete(canvas); renderer.dispose(); },
     rot, zoomBy, resetRot: reset,
-    disablePointerDrag() { nativeDrag = true; }
+    disablePointerDrag() { nativeDrag = true; },
+    // Recolorear EN CALIENTE sin desmontar: mismo render, mismas luces.
+    // En la app nativa remontar (dispose + nuevo renderer sobre el mismo canvas)
+    // es frágil en WKWebView; recolorear la instancia viva no falla nunca.
+    recolor(newClasses) { colorize(inst, newClasses); renderer.render(scene, cam); }
   };
   liveByCanvas.set(canvas, api);
   liveAll.push(api);

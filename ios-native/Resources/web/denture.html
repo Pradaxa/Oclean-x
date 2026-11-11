@@ -31,10 +31,14 @@ window.setZones = async function(classes){
   while (pending !== null) {
     const cls = pending; pending = null;
     try{
-      if (mounted) { D.disposeAll(); mounted = false; api = null; }
-      api = await D.mountLive(cv, cls);
-      if (api && api.disablePointerDrag) api.disablePointerDrag(); // los gestos llegan de SwiftUI
-      mounted = true;
+      if (mounted && api && api.recolor) {
+        api.recolor(cls); // recolorear en caliente: no remontar (WKWebView no siempre sobrevive al remonte)
+      } else {
+        if (mounted) { D.disposeAll(); mounted = false; api = null; }
+        api = await D.mountLive(cv, cls);
+        if (api && api.disablePointerDrag) api.disablePointerDrag(); // los gestos llegan de SwiftUI
+        mounted = true;
+      }
       try { window.webkit.messageHandlers.zones.postMessage(cls.join(',')); } catch(e) {}
       var d = document.getElementById('diag'); if (d) d.remove();
     }catch(e){ console.error('setZones', e);
