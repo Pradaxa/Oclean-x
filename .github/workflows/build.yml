@@ -1,0 +1,152 @@
+name: build-ios
+
+on:
+  push:
+    branches: [main]
+    paths: ['www/**', 'ios/**', 'package.json', 'package-lock.json', 'capacitor.config.json', '.github/workflows/build.yml']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publicar solo con aprobación del usuario
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Dependencias y sync Capacitor
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync ios
+
+      - name: Simulator build + capturas
+        run: |
+          set -e
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-sim \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          DEVICE=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("iPhone"))] | sort_by(.name) | .[-1].udid')
+          echo "Simulador: $DEVICE"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          APP=$(find build-sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "App.app")
+          xcrun simctl install "$DEVICE" "$APP"
+          BID=com.pradaxa.ocleanx
+          xcrun simctl ui "$DEVICE" appearance dark
+          xcrun simctl launch "$DEVICE" "$BID" >/dev/null 2>&1 || true
+          # Espera a que cargue la web y el modelo 3D (three.js + GLB)
+          sleep 25
+          mkdir -p shots
+          xcrun simctl io "$DEVICE" screenshot "shots/dark-hoy.png" || true
+          sleep 10
+          xcrun simctl io "$DEVICE" screenshot "shots/dark-hoy-2.png" || true
+          ls -la shots/
+
+      - name: Subir capturas
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots/
+          if-no-files-found: ignore
+
+      - name: Build IPA (unsigned)
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="0.1.${{ github.run_number }}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R "build/Build/Products/Release-iphoneos/App.app" Payload/
+          zip -r -q OcleanX.ipa Payload
+          ls -lh OcleanX.ipa
+
+      - name: Guardar IPA preparada
+        uses: actions/upload-artifact@v4
+        with:
+          name: oclean-ipa-preparada
+          path: OcleanX.ipa
+
+      - name: Publish release
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v0.1.${{ github.run_number }}"
+          gh release create "$TAG" OcleanX.ipa \
+            --title "Oclean X $TAG" \
+            --notes "Build automática ${{ github.run_number }}"
+          # GitHub a veces deja el asset roto (504 en la URL pública aunque la subida dijo OK).
+          for i in 1 2 3 4 5; do
+            if curl -sfL -o /dev/null "https://github.com/Pradaxa/oclean-x/releases/download/$TAG/OcleanX.ipa"; then
+              echo "Asset público descargable OK"
+              break
+            fi
+            echo "Asset no descargable (intento $i), re-subiendo"
+            gh release upload "$TAG" OcleanX.ipa --clobber
+            sleep 10
+            if [ "$i" = 5 ]; then
+              echo "El asset sigue sin ser descargable tras 5 intentos"
+              exit 1
+            fi
+          done
+
+      - name: Update AltStore source
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        run: |
+          TAG="v0.1.${{ github.run_number }}"
+          VER="0.1.${{ github.run_number }}"
+          BUILD="${{ github.run_number }}"
+          SIZE=$(stat -f%z OcleanX.ipa)
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          NEWAPP=$(jq -n \
+            --arg ver "$VER" --arg build "$BUILD" --arg date "$DATE" --argjson size "$SIZE" \
+            --arg url "https://github.com/Pradaxa/oclean-x/releases/download/$TAG/OcleanX.ipa" \
+            '{
+              name: "Oclean X",
+              bundleIdentifier: "com.pradaxa.ocleanx",
+              developerName: "Pradaxa",
+              localizedDescription: "Tu cepillo Oclean X: sesiones, batería y modelo 3D, con Bluetooth real.",
+              iconURL: "https://raw.githubusercontent.com/Pradaxa/oclean-x/main/altstore/icon.png",
+              tintColor: "E0242E",
+              versions: [{
+                version: $ver,
+                buildVersion: $build,
+                date: $date,
+                downloadURL: $url,
+                size: $size,
+                minOSVersion: "15.0"
+              }]
+            }')
+          jq --argjson app "$NEWAPP" \
+            '.apps = ([.apps[]? | select(.bundleIdentifier != "com.pradaxa.ocleanx")] + [$app])' \
+            altstore/source.json > altstore/source.json.tmp && mv altstore/source.json.tmp altstore/source.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add altstore/source.json
+          git commit -m "AltStore source $TAG [skip ci]" || echo "sin cambios"
+          git pull --rebase
+          git push

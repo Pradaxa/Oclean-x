@@ -1,0 +1,7 @@
+{
+  "appId": "com.pradaxa.ocleanx",
+  "appName": "Oclean X",
+  "webDir": "www",
+  "backgroundColor": "#0a0a0f",
+  "ios": { "contentInset": "never", "scrollEnabled": false }
+}

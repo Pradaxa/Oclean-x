@@ -1,0 +1,12 @@
+{
+  "name": "oclean-x",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "sync": "cap sync ios" },
+  "devDependencies": { "@capacitor/cli": "^8.0.0" },
+  "dependencies": {
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor-community/bluetooth-le": "^8.3.0"
+  }
+}
