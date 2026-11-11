@@ -1,13 +1,52 @@
 /* Puente Web Bluetooth -> Capacitor BLE (solo app nativa).
    En la web normal este archivo no hace nada: window.Capacitor no existe.
-   En la app nativa implementa navigator.bluetooth con la misma forma que la
-   Web Bluetooth API para que app.js funcione sin cambios. */
+   En la app nativa instala navigator.bluetooth con la forma de la Web
+   Bluetooth API para que app.js funcione sin cambios.
+   El plugin nativo puede tardar en registrarse en Capacitor.Plugins tras
+   la carga de los scripts: por eso navigator.bluetooth se instala ya y el
+   plugin se resuelve de forma perezosa en la primera llamada, con espera. */
 (function(){
 'use strict';
 if(!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) return;
-var Plugins = window.Capacitor.Plugins || {};
-var BleClient = Plugins.BleClient;
-if(!BleClient) return;
+
+var Ble=null, bleWait=null, initDone=null;
+
+function getBle(){
+  var P=window.Capacitor.Plugins||{};
+  return P.BleClient||null;
+}
+function waitBle(){
+  if(Ble) return Promise.resolve(Ble);
+  if(!bleWait){
+    bleWait=new Promise(function(res,rej){
+      var n=0;
+      (function poll(){
+        var b=getBle();
+        if(b){ Ble=b; return res(b); }
+        if(++n>120){ bleWait=null; return rej(new Error('plugin BLE nativo no disponible')); }
+        setTimeout(poll,250);
+      })();
+    });
+  }
+  return bleWait;
+}
+function ensureInit(){
+  return waitBle().then(function(b){
+    if(!initDone) initDone=b.initialize();
+    return initDone;
+  });
+}
+function nativeBanner(msg){
+  try{
+    var d=document.getElementById('native-ble-warn');
+    if(!d){
+      d=document.createElement('div'); d.id='native-ble-warn';
+      d.style.cssText='position:fixed;left:12px;right:12px;bottom:110px;z-index:99999;background:#7a1f1f;color:#fff;font:13px/1.4 -apple-system,sans-serif;padding:10px 12px;border-radius:12px;text-align:center';
+      document.body.appendChild(d);
+    }
+    d.textContent=msg;
+  }catch(e){}
+}
 
 function normUuid(u){
   if(typeof u==='number') u=u.toString(16);
@@ -43,23 +82,27 @@ ShimCharacteristic.prototype._emit=function(type,value){
   (this._listeners[type]||[]).slice().forEach(function(fn){ try{ fn(ev); }catch(e){ console.error(e); } });
 };
 ShimCharacteristic.prototype.startNotifications=async function(){
-  var self=this;
-  await BleClient.startNotifications(this._deviceId,this._svc,this.uuid,function(value){
+  var b=await waitBle(); var self=this;
+  await b.startNotifications(this._deviceId,this._svc,this.uuid,function(value){
     self._emit('characteristicvaluechanged',toDataView(value));
   });
 };
 ShimCharacteristic.prototype.stopNotifications=async function(){
-  await BleClient.stopNotifications(this._deviceId,this._svc,this.uuid);
+  var b=await waitBle();
+  await b.stopNotifications(this._deviceId,this._svc,this.uuid);
 };
 ShimCharacteristic.prototype.readValue=async function(){
-  return toDataView(await BleClient.read(this._deviceId,this._svc,this.uuid));
+  var b=await waitBle();
+  return toDataView(await b.read(this._deviceId,this._svc,this.uuid));
 };
 ShimCharacteristic.prototype.writeValue=async function(v){
-  await BleClient.write(this._deviceId,this._svc,this.uuid,toDataView(v));
+  var b=await waitBle();
+  await b.write(this._deviceId,this._svc,this.uuid,toDataView(v));
 };
 ShimCharacteristic.prototype.writeValueWithResponse=ShimCharacteristic.prototype.writeValue;
 ShimCharacteristic.prototype.writeValueWithoutResponse=async function(v){
-  await BleClient.writeWithoutResponse(this._deviceId,this._svc,this.uuid,toDataView(v));
+  var b=await waitBle();
+  await b.writeWithoutResponse(this._deviceId,this._svc,this.uuid,toDataView(v));
 };
 
 /* ---------- Service ---------- */
@@ -90,9 +133,10 @@ function ShimServer(device){
   this._services=null;
 }
 ShimServer.prototype.connect=async function(){
+  var b=await waitBle();
   var self=this;
-  await BleClient.connect(this._dev.id,function(){ self.connected=false; });
-  var services=await BleClient.getServices(this._dev.id);
+  await b.connect(this._dev.id,function(){ self.connected=false; });
+  var services=await b.getServices(this._dev.id);
   this._services={};
   services.forEach(function(s){ self._services[normUuid(s.uuid)]=new ShimService(self._dev.id,s); });
   this.connected=true;
@@ -104,7 +148,7 @@ ShimServer.prototype.getPrimaryService=async function(u){
   return s;
 };
 ShimServer.prototype.disconnect=async function(){
-  try{ await BleClient.disconnect(this._dev.id); }catch(e){}
+  try{ var b=await waitBle(); await b.disconnect(this._dev.id); }catch(e){}
   this.connected=false;
 };
 
@@ -115,14 +159,10 @@ function ShimDevice(id,name){
 }
 
 /* ---------- navigator.bluetooth ---------- */
-var initDone=null;
-function ensureInit(){
-  if(!initDone) initDone=BleClient.initialize();
-  return initDone;
-}
 var bluetooth={
   requestDevice:async function(opts){
     await ensureInit();
+    var b=await waitBle();
     opts=opts||{};
     var req={};
     var svcFilter=null, namePrefix=null, name=null;
@@ -139,7 +179,7 @@ var bluetooth={
     if(opts.optionalServices) req.optionalServices=opts.optionalServices.map(normUuid);
     var d;
     try{
-      d=await BleClient.requestDevice(req);
+      d=await b.requestDevice(req);
     }catch(e){
       throw notFound((e && e.message) || 'No se eligio ningun dispositivo');
     }
@@ -149,7 +189,7 @@ var bluetooth={
      contempla este camino y arma el toque manual de sincronizacion. */
   getDevices:async function(){ await ensureInit(); return []; },
   getAvailability:async function(){
-    try{ await ensureInit(); return await BleClient.isEnabled(); }catch(e){ return false; }
+    try{ await ensureInit(); var b=await waitBle(); return await b.isEnabled(); }catch(e){ return false; }
   }
 };
 try{
@@ -157,4 +197,6 @@ try{
 }catch(e){
   navigator.bluetooth=bluetooth;
 }
+/* Aviso visible solo si el plugin no llega a aparecer (diagnóstico en su iPhone). */
+waitBle().catch(function(){ nativeBanner('Bluetooth nativo no disponible: el plugin no cargó. Reinicia la app; si sigue, avisa a Adrián.'); });
 })();
