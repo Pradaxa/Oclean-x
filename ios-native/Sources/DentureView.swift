@@ -6,6 +6,10 @@ import WebKit
    ES y el fetch del GLB no funcionan sobre file://. */
 final class LocalSchemeHandler: NSObject, WKURLSchemeHandler {
     private let root: URL
+    // Canal JS->nativo por fetch: window.webkit.messageHandlers no es fiable
+    // en paginas servidas por esquema propio; un fetch a app://local/__zones/...
+    // siempre llega aqui.
+    var onZones: ((String) -> Void)?
     init(root: URL) { self.root = root }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
@@ -14,6 +18,16 @@ final class LocalSchemeHandler: NSObject, WKURLSchemeHandler {
         }
         var path = url.path
         if path.hasPrefix("/") { path.removeFirst() }
+        if path.hasPrefix("__zones/") {
+            let cls = String(path.dropFirst("__zones/".count))
+            let cb = onZones
+            DispatchQueue.main.async { cb?(cls) }
+            let resp = URLResponse(url: url, mimeType: "text/plain", expectedContentLength: 0, textEncodingName: nil)
+            task.didReceive(resp)
+            task.didReceive(Data())
+            task.didFinish()
+            return
+        }
         if path.isEmpty { path = "denture.html" }
         let file = root.appendingPathComponent(path)
         let mime: String
@@ -130,7 +144,11 @@ private struct DentureWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let root = Bundle.main.resourceURL!.appendingPathComponent("web")
-        config.setURLSchemeHandler(LocalSchemeHandler(root: root), forURLScheme: "app")
+        let handler = LocalSchemeHandler(root: root)
+        handler.onZones = { [weak controller] s in
+            controller?.zonesState = s
+        }
+        config.setURLSchemeHandler(handler, forURLScheme: "app")
         config.userContentController.add(context.coordinator, name: "zones")
         context.coordinator.controller = controller
         let wv = WKWebView(frame: .zero, configuration: config)

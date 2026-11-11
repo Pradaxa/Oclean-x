@@ -39,6 +39,7 @@ window.setZones = async function(classes){
         if (api && api.disablePointerDrag) api.disablePointerDrag(); // los gestos llegan de SwiftUI
         mounted = true;
       }
+      try { fetch('./__zones/' + cls.join('-')).catch(function(){}); } catch(e) {}
       try { window.webkit.messageHandlers.zones.postMessage(cls.join(',')); } catch(e) {}
       var d = document.getElementById('diag'); if (d) d.remove();
     }catch(e){ console.error('setZones', e);
