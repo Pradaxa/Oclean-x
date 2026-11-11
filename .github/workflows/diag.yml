@@ -1,0 +1,15 @@
+name: diag
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diag.yml']
+  workflow_dispatch:
+jobs:
+  diag-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo linux-ok
+  diag-mac-intel:
+    runs-on: macos-15-intel
+    steps:
+      - run: sw_vers && xcodebuild -version
