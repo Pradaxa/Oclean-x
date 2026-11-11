@@ -12,8 +12,9 @@ if(!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.i
 var Ble=null, bleWait=null, initDone=null;
 
 function getBle(){
+  if(window.BleClient) return window.BleClient;
   var P=window.Capacitor.Plugins||{};
-  return P.BleClient||null;
+  return P.BleClient||P.BluetoothLe||null;
 }
 function waitBle(){
   if(Ble) return Promise.resolve(Ble);
