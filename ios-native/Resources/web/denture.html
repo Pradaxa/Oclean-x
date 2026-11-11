@@ -19,10 +19,8 @@ window.setZones = async function(classes){
     if(mounted){ D.disposeAll(); mounted = false; }
     await D.mountLive(cv, classes);
     mounted = true;
+    var d=document.getElementById('diag'); if(d) d.remove();
   }catch(e){ console.error('setZones', e); }
 };
-window.setZones(['none','none','none','none','none','none','none','none']).then(function(){
-  var d=document.getElementById('diag');
-  if(d && d.textContent==='cargando 3D…') d.remove();
-});
+window.setZones(['none','none','none','none','none','none','none','none']);
 </script></body></html>
