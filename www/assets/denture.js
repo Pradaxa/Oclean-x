@@ -218,13 +218,15 @@ export async function mountLive(canvas, classes) {
   inst.position.sub(c);
   scene.add(wrap);
   const size = bb.getSize(new THREE.Vector3());
-  // en la vista Hoy el dock flota sobre el lienzo: elevar el modelo lo justo para librarlo
+  // en la vista Hoy DE LA WEB el dock flota sobre el lienzo: elevar el modelo lo justo para librarlo.
+  // En la app nativa (y en la hoja) no hay dock: modelo centrado y a tamaño completo.
   const inSheet = !!canvas.closest('.mg-sheet');
-  const liftFrac = inSheet ? 0 : 0.20;
+  const nativeShell = !!(document.documentElement && document.documentElement.dataset.shell === 'native');
+  const liftFrac = (inSheet || nativeShell) ? 0 : 0.20;
   inst.position.y += size.y * liftFrac;
   // lienzo de Hoy alto (400px): cabe la boca entera y la zona de arrastre es cómoda
   const fit = Math.max(size.x / cam.aspect, size.y);
-  const dist = fit * 0.5 / Math.tan(THREE.MathUtils.degToRad(19)) * (inSheet ? 1.16 : 1.30);
+  const dist = fit * 0.5 / Math.tan(THREE.MathUtils.degToRad(19)) * ((inSheet || nativeShell) ? 1.16 : 1.30);
   cam.position.set(0, -0.6, dist); // cámara algo baja: la arcada inferior se ve más cerca, como en la referencia de Adrián
   cam.lookAt(0, 0, 0);
 
