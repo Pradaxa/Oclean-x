@@ -12,11 +12,11 @@
       "tintColor": "E0242E",
       "versions": [
         {
-          "version": "0.1.7",
-          "buildVersion": "7",
-          "date": "2026-11-11T17:55:07Z",
-          "downloadURL": "https://github.com/Pradaxa/oclean-x/releases/download/v0.1.7/OcleanX.ipa",
-          "size": 1739678,
+          "version": "0.1.10",
+          "buildVersion": "10",
+          "date": "2026-11-11T19:23:16Z",
+          "downloadURL": "https://github.com/Pradaxa/oclean-x/releases/download/v0.1.10/OcleanX.ipa",
+          "size": 1748152,
           "minOSVersion": "15.0"
         }
       ]
