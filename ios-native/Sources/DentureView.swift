@@ -158,7 +158,14 @@ private struct DentureWebView: UIViewRepresentable {
         wv.scrollView.backgroundColor = .clear
         wv.navigationDelegate = context.coordinator
         wv.accessibilityIdentifier = "denture-3d"
+        // ?diag=1 solo en simulador: la página escribe en una esquina lo que
+        // montó, para verificarlo en las capturas. En el iPhone de Adrián no
+        // aparece nada.
+        #if targetEnvironment(simulator)
+        wv.load(URLRequest(url: URL(string: "app://local/denture.html?diag=1")!))
+        #else
         wv.load(URLRequest(url: URL(string: "app://local/denture.html")!))
+        #endif
         context.coordinator.webView = wv
         controller.webView = wv
         controller.resetA11y()
@@ -172,8 +179,6 @@ private struct DentureWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
         weak var controller: DentureController?
-        var loaded = false
-        var pending: [ZoneClass]??
         private var lastArr: String?
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -183,9 +188,10 @@ private struct DentureWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            loaded = true
-            lastArr = nil // página nueva: hay que reaplicar aunque las clases no hayan cambiado
-            if let p = pending { apply(classes: p); pending = nil }
+            // Página nueva: hay que reaplicar aunque las clases no hayan cambiado
+            let arr = lastArr
+            lastArr = nil
+            if let arr { send(arr, attempt: 0) }
         }
 
         private func showError(_ webView: WKWebView, _ msg: String) {
@@ -202,11 +208,24 @@ private struct DentureWebView: UIViewRepresentable {
         }
 
         func apply(classes: [ZoneClass]?) {
-            guard loaded, let wv = webView else { pending = classes; return }
             let arr = (classes ?? Array(repeating: .none, count: 8)).map { "\"\($0.rawValue)\"" }.joined(separator: ",")
-            guard arr != lastArr else { return } // no remontar el 3D si nada cambió (mata un arrastre en curso)
+            guard arr != lastArr else { return } // mismo estado: no repintar (el recoloreado es barato pero innecesario)
             lastArr = arr
-            wv.evaluateJavaScript("window.setZones && window.setZones([\(arr)]);", completionHandler: nil)
+            send(arr, attempt: 0)
+        }
+
+        /* evaluateJavaScript devuelve 0 si window.setZones aún no existe (la
+           página no ha parseado el script clásico): reintenta hasta 20 veces.
+           Así apply() no depende de didFinish ni de la carga del GLB. */
+        private func send(_ arr: String, attempt: Int) {
+            guard let wv = webView else { return }
+            wv.evaluateJavaScript("window.setZones ? (window.setZones([\(arr)]), 1) : 0") { [weak self] res, _ in
+                guard let self else { return }
+                if let n = res as? Int, n == 1 { return }
+                if attempt < 20 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.send(arr, attempt: attempt + 1) }
+                }
+            }
         }
     }
 }

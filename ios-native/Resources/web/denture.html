@@ -3,49 +3,49 @@
 <style>
 html,body{margin:0;height:100%;background:transparent;overflow:hidden}
 canvas{width:100%;height:100%;display:block;touch-action:none}
+#diag{position:fixed;left:6px;top:4px;color:rgba(255,255,255,.45);font:9px -apple-system,sans-serif;pointer-events:none;z-index:9}
 </style></head><body>
 <canvas id="c"></canvas>
-<div id="diag" style="position:fixed;left:8px;bottom:6px;color:#d9a;font:13px/1.5 -apple-system,sans-serif;pointer-events:none">HTML OK, módulo pendiente…</div>
+<div id="diag"></div>
 <script>
-window.addEventListener('error',function(e){var d=document.getElementById('diag');if(d)d.textContent='error: '+(e.message||e.type)+' @'+(e.filename||'').split('/').pop()+':'+e.lineno;});
-window.addEventListener('unhandledrejection',function(e){var d=document.getElementById('diag');if(d)d.textContent='promesa: '+(e.reason&&e.reason.message||e.reason);});
+/* Cola en script CLÁSICO (síncrono): window.setZones existe desde el primer
+   parseo, así que las llamadas de SwiftUI por evaluateJavaScript no se pierden
+   nunca, lleguen antes o después de que cargue el módulo. La última gana. */
+window.__zq = [];
+window.setZones = function(c){ window.__zq.push(c); };
 </script>
 <script type="module">
 import * as D from './assets/denture.js';
 const cv = document.getElementById('c');
-let mounted = false;
-/* Cola serializada: la ÚLTIMA llamada siempre gana. Sin esto, una llamada que
-   llega mientras otra aún carga el GLB recibe la instancia cacheada de la
-   anterior (mountLive la guarda por canvas) y los colores pedidos se pierden:
-   los dientes se quedan blancos aunque haya zonas mal cepilladas. */
-let pending = null;
-let busy = false;
-let api = null; // instancia viva del render (rot/zoom los conduce SwiftUI)
+const diag = document.getElementById('diag');
+const DIAG = new URLSearchParams(location.search).has('diag');
+let mounted = false, api = null, busy = false;
+/* Los gestos los conduce SwiftUI por evaluateJavaScript */
 window.dragRot = function(dx, dy){ if (api && api.rot) api.rot(dx, dy); };
 window.pinchZoom = function(f){ if (api && api.zoomBy) api.zoomBy(f); };
 window.resetRot = function(){ if (api && api.resetRot) api.resetRot(); };
-window.setZones = async function(classes){
-  pending = classes;
-  if (busy) return;
-  busy = true;
-  while (pending !== null) {
-    const cls = pending; pending = null;
-    try{
-      if (mounted && api && api.recolor) {
-        api.recolor(cls); // recolorear en caliente: no remontar (WKWebView no siempre sobrevive al remonte)
-      } else {
-        if (mounted) { D.disposeAll(); mounted = false; api = null; }
-        api = await D.mountLive(cv, cls);
-        if (api && api.disablePointerDrag) api.disablePointerDrag(); // los gestos llegan de SwiftUI
-        mounted = true;
-      }
-      try { fetch('./__zones/' + cls.join('-')).catch(function(){}); } catch(e) {}
-      try { window.webkit.messageHandlers.zones.postMessage(cls.join(',')); } catch(e) {}
-      var d = document.getElementById('diag'); if (d) d.remove();
-    }catch(e){ console.error('setZones', e);
-      try { window.webkit.messageHandlers.zones.postMessage('ERROR:' + (e && e.message || e)); } catch(e2) {} }
-  }
-  busy = false;
-};
+function report(cls){
+  if (DIAG) { try { diag.textContent = 'z:' + cls.join(',') + ' wk:' + ((window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.zones) ? 'si' : 'no'); } catch(e) {} }
+  try { fetch('./__zones/' + cls.join('-')).catch(function(){}); } catch(e) {}
+  try { window.webkit.messageHandlers.zones.postMessage(cls.join(',')); } catch(e) {}
+}
+window.addEventListener('error', function(e){ if (DIAG) diag.textContent = 'error: ' + (e.message || e.type); });
+/* Montaje inicial de cortesía: algo visible aunque SwiftUI no llame */
 window.setZones(['none','none','none','none','none','none','none','none']);
+setInterval(async function(){
+  if (busy || !window.__zq.length) return;
+  busy = true;
+  const cls = window.__zq[window.__zq.length - 1]; window.__zq.length = 0;
+  try {
+    if (mounted && api && api.recolor) {
+      api.recolor(cls); // recolorear en caliente: sin desmontar, sin perder gestos
+    } else {
+      api = await D.mountLive(cv, cls);
+      if (api && api.disablePointerDrag) api.disablePointerDrag();
+      mounted = true;
+    }
+    report(cls);
+  } catch(e) { if (DIAG) { try { diag.textContent = 'err:' + (e && e.message || e); } catch(e2) {} } }
+  busy = false;
+}, 60);
 </script></body></html>
