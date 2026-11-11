@@ -1,0 +1,39 @@
+name: OcleanXNative
+options:
+  bundleIdPrefix: com.pradaxa
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  OcleanX:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: Sources
+      - path: Resources/web
+        type: folder
+      - path: Resources/Assets.xcassets
+        optional: true
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleDisplayName: Oclean X
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: ""
+        UIUserInterfaceStyle: Dark
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSBluetoothAlwaysUsageDescription: Oclean X usa Bluetooth para conectar con tu cepillo y sincronizar tus cepillados.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pradaxa.ocleanx
+        SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGNING_ALLOWED: NO

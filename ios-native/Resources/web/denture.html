@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>
+html,body{margin:0;height:100%;background:transparent;overflow:hidden}
+canvas{width:100%;height:100%;display:block;touch-action:none}
+</style></head><body>
+<canvas id="c"></canvas>
+<script type="module">
+import * as D from './assets/denture.js';
+const cv = document.getElementById('c');
+let mounted = false;
+window.setZones = async function(classes){
+  try{
+    if(mounted){ D.disposeAll(); mounted = false; }
+    await D.mountLive(cv, classes);
+    mounted = true;
+  }catch(e){ console.error('setZones', e); }
+};
+window.setZones(['none','none','none','none','none','none','none','none']);
+</script></body></html>

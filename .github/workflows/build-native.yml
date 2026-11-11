@@ -1,0 +1,120 @@
+name: build-native-ios
+
+on:
+  push:
+    branches: [main]
+    paths: ['ios-native/**', 'www/assets/denture.js', 'www/assets/dentadura.glb', 'www/assets/vendor/**', 'www/assets/brush.png', '.github/workflows/build-native.yml']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publicar release nativa (no toca la fuente AltStore de la Capacitor)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  ios-native:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar recursos (3D web + icono)
+        run: |
+          mkdir -p ios-native/Resources/web/assets ios-native/Resources/Assets.xcassets
+          cp www/assets/denture.js www/assets/dentadura.glb www/assets/brush.png ios-native/Resources/web/assets/
+          mkdir -p ios-native/Resources/web/assets/vendor
+          cp www/assets/vendor/three.module.min.js www/assets/vendor/GLTFLoader.js ios-native/Resources/web/assets/vendor/
+          cp -R ios/App/App/Assets.xcassets/. ios-native/Resources/Assets.xcassets/
+          rm -rf ios-native/Resources/Assets.xcassets/Splash.imageset
+          ls -la ios-native/Resources/web/assets ios-native/Resources/web/assets/vendor
+
+      - name: XcodeGen
+        run: |
+          brew install xcodegen
+          cd ios-native && xcodegen
+
+      - name: Simulator build + capturas
+        run: |
+          set -e
+          cd ios-native
+          xcodebuild \
+            -project OcleanXNative.xcodeproj \
+            -scheme OcleanX \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-sim \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          DEVICE=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("iPhone"))] | ([.[] | select(.name | test("Pro Max"))] + [.[]]) | .[0].udid')
+          echo "Simulador: $DEVICE"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          APP=$(find build-sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "OcleanX.app")
+          xcrun simctl install "$DEVICE" "$APP"
+          BID=com.pradaxa.ocleanx
+          xcrun simctl ui "$DEVICE" appearance dark
+          xcrun simctl launch "$DEVICE" "$BID" >/dev/null 2>&1 || true
+          # El 3D (three.js + GLB en WKWebView) tarda en simulador Intel.
+          mkdir -p shots
+          sleep 40
+          xcrun simctl io "$DEVICE" screenshot "shots/native-hoy-40s.png" || true
+          sleep 30
+          xcrun simctl io "$DEVICE" screenshot "shots/native-hoy-70s.png" || true
+          sleep 30
+          xcrun simctl io "$DEVICE" screenshot "shots/native-hoy-100s.png" || true
+          ls -la shots/
+
+      - name: Subir capturas
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-native
+          path: ios-native/shots/
+          if-no-files-found: ignore
+
+      - name: Build IPA (unsigned)
+        run: |
+          cd ios-native
+          xcodebuild \
+            -project OcleanXNative.xcodeproj \
+            -scheme OcleanX \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="0.2.${{ github.run_number }}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            build
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R "ios-native/build/Build/Products/Release-iphoneos/OcleanX.app" Payload/
+          zip -r -q OcleanX-native.ipa Payload
+          ls -lh OcleanX-native.ipa
+
+      - name: Guardar IPA nativa
+        uses: actions/upload-artifact@v4
+        with:
+          name: oclean-ipa-nativa
+          path: OcleanX-native.ipa
+
+      - name: Publish release nativa
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="native-v0.2.${{ github.run_number }}"
+          gh release create "$TAG" OcleanX-native.ipa \
+            --title "Oclean X nativa $TAG (alpha)" \
+            --notes "Reescritura nativa SwiftUI · build ${{ github.run_number }} · NO sustituye aún a la Capacitor en la fuente AltStore"
+          for i in 1 2 3 4 5; do
+            if curl -sfL -o /dev/null "https://github.com/Pradaxa/oclean-x/releases/download/$TAG/OcleanX-native.ipa"; then
+              echo "Asset público descargable OK"; break
+            fi
+            echo "Asset no descargable (intento $i), re-subiendo"
+            gh release upload "$TAG" OcleanX-native.ipa --clobber
+            sleep 10
+            if [ "$i" = 5 ]; then exit 1; fi
+          done
