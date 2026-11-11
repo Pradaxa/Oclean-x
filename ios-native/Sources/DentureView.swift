@@ -45,6 +45,7 @@ final class LocalSchemeHandler: NSObject, WKURLSchemeHandler {
 final class DentureController: ObservableObject {
     weak var webView: WKWebView?
     @Published private(set) var a11y = "rotY 0.00 rotX 0.00 zoom 1.00"
+    @Published var zonesState = "?" // clases con las que el JS montó el render por última vez
     private var rotY: Double = 0
     private var rotX: Double = 0
     private var zoom: Double = 1
@@ -89,7 +90,7 @@ struct DentureView: View {
         ZStack {
             DentureWebView(classes: classes, controller: controller)
             // Estado del gesto visible solo para las pruebas de UI (1px, transparente)
-            Text(controller.a11y)
+            Text(controller.a11y + " z=" + controller.zonesState)
                 .font(.system(size: 1))
                 .foregroundColor(.clear)
                 .allowsHitTesting(false)
@@ -130,6 +131,8 @@ private struct DentureWebView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         let root = Bundle.main.resourceURL!.appendingPathComponent("web")
         config.setURLSchemeHandler(LocalSchemeHandler(root: root), forURLScheme: "app")
+        config.userContentController.add(context.coordinator, name: "zones")
+        context.coordinator.controller = controller
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.isOpaque = false
         wv.backgroundColor = .clear
@@ -148,11 +151,18 @@ private struct DentureWebView: UIViewRepresentable {
         context.coordinator.apply(classes: classes)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
+        weak var controller: DentureController?
         var loaded = false
         var pending: [ZoneClass]??
         private var lastArr: String?
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "zones", let s = message.body as? String {
+                DispatchQueue.main.async { self.controller?.zonesState = s }
+            }
+        }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             loaded = true

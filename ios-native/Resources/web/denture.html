@@ -35,8 +35,10 @@ window.setZones = async function(classes){
       api = await D.mountLive(cv, cls);
       if (api && api.disablePointerDrag) api.disablePointerDrag(); // los gestos llegan de SwiftUI
       mounted = true;
+      try { window.webkit.messageHandlers.zones.postMessage(cls.join(',')); } catch(e) {}
       var d = document.getElementById('diag'); if (d) d.remove();
-    }catch(e){ console.error('setZones', e); }
+    }catch(e){ console.error('setZones', e);
+      try { window.webkit.messageHandlers.zones.postMessage('ERROR:' + (e && e.message || e)); } catch(e2) {} }
   }
   busy = false;
 };

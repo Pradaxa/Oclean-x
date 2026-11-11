@@ -40,7 +40,10 @@ final class OcleanXUITests: XCTestCase {
         let app = launch(["-seedDemo", "-hoySelectBad", "-openTab", "hoy"])
         let state = app.staticTexts["rot-state"].firstMatch
         XCTAssertTrue(state.waitForExistence(timeout: 20), "no aparece el 3D")
-        sleep(4) // carga del GLB
+        sleep(6) // carga del GLB + montaje con clases reales
+        // Las clases con zonas malas tienen que haber llegado al JS (eco por script message)
+        XCTAssertTrue(state.label.contains("bad"),
+                      "las clases reales no llegaron al render. rot-state: \(state.label)")
         let v0 = state.label
         app.webViews.firstMatch.swipeRight()
         let v1 = state.label
