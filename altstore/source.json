@@ -9,8 +9,16 @@
       "developerName": "Pradaxa",
       "localizedDescription": "Tu cepillo Oclean X: sesiones, batería y modelo 3D, con Bluetooth real.",
       "iconURL": "https://raw.githubusercontent.com/Pradaxa/oclean-x/main/altstore/icon.png",
-      "tintColor": "E0242E",
+      "tintColor": "F2343E",
       "versions": [
+        {
+          "version": "0.3.3",
+          "buildVersion": "3",
+          "date": "2026-11-11T21:45:00Z",
+          "downloadURL": "https://github.com/Pradaxa/oclean-x/releases/download/native-v0.3.3/OcleanX-native-glass.ipa",
+          "size": 1123838,
+          "minOSVersion": "15.0"
+        },
         {
           "version": "0.1.13",
           "buildVersion": "13",
