@@ -12,7 +12,6 @@ struct AjustesView: View {
     @State private var showWipeConfirm = false
     @State private var notice: String? = nil
     @State private var copied = false
-    @State private var brightnessVal: Double = 50
     @State private var motorVal: Double = 50
 
     var body: some View {
@@ -105,16 +104,6 @@ struct AjustesView: View {
                                 set: { store.pending.wakeGesture = $0; store.save(); notice = "Se aplicará en la próxima sincronización" })).tint(Theme.accent)
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
-                                    Text("Brillo de pantalla")
-                                    Spacer()
-                                    Text("\(Int(brightnessVal))%").foregroundColor(.secondary).font(.subheadline)
-                                }
-                                Slider(value: $brightnessVal, in: 5...100, step: 1) { editing in
-                                    if !editing { store.pending.brightness = Int(brightnessVal); store.save(); notice = "Se aplicará en la próxima sincronización" }
-                                }.tint(Theme.accent)
-                            }
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
                                     Text("Velocidad del motor")
                                     Spacer()
                                     Text("\(Int(motorVal))").foregroundColor(.secondary).font(.subheadline)
@@ -127,7 +116,6 @@ struct AjustesView: View {
                                 .font(.footnote).foregroundColor(.secondary)
                         }
                         .onAppear {
-                            if let b = store.pending.brightness { brightnessVal = Double(b) }
                             if let m = store.pending.motorSpeed { motorVal = Double(m) }
                         }
                     }

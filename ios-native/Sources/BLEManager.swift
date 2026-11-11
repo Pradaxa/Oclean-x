@@ -269,12 +269,6 @@ final class BLEManager: NSObject, ObservableObject {
                     dlog("experimental gesto activacion -> \(v ? "01" : "EC"): \(ok ? "enviado" : "fallo")")
                     if !ok { allOk = false }
                 }
-                if let b = pend.brightness {
-                    let v = max(5, min(100, b))
-                    let ok = await writeOK([0x02, 0x0C, UInt8(v)], to: w, on: p)
-                    dlog("experimental brillo -> \(v): \(ok ? "enviado" : "fallo")")
-                    if !ok { allOk = false }
-                }
                 if let ms = pend.motorSpeed {
                     let v = max(0, min(100, ms))
                     let ok = await writeOK([0x02, 0x07, 0, 0, UInt8((v >> 8) & 0xff), UInt8(v & 0xff)], to: w, on: p)

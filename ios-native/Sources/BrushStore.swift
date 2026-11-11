@@ -25,10 +25,9 @@ struct PendingSettings: Codable {
     var resetHead: Bool?
     // Experimentales (sin verificacion posible; se registran en Diagnostico)
     var wakeGesture: Bool?
-    var brightness: Int?
     var motorSpeed: Int?
     var isEmpty: Bool {
-        scheme == nil && areaRemind == nil && remindSwitch == nil && runningSwitch == nil && overPressure == nil && headDays == nil && resetHead == nil && wakeGesture == nil && brightness == nil && motorSpeed == nil
+        scheme == nil && areaRemind == nil && remindSwitch == nil && runningSwitch == nil && overPressure == nil && headDays == nil && resetHead == nil && wakeGesture == nil && motorSpeed == nil
     }
 }
 
