@@ -137,7 +137,22 @@ ShimServer.prototype.connect=async function(){
   var b=await waitBle();
   var self=this;
   await b.connect(this._dev.id,function(){ self.connected=false; });
-  var services=await b.getServices(this._dev.id);
+  /* El plugin resuelve connect() ANTES de descubrir servicios (didConnect
+     dispara discoverServices y resuelve ya): getServices() inmediato devuelve
+     la tabla GATT cacheada/partial de iOS (faltan 0x180F/0x180A y las ATT
+     fallan con "attribute not found"). Forzamos descubrimiento fresco y
+     esperamos a que estén el servicio Oclean (con >=5 chars) y el de bateria. */
+  try{ await b.discoverServices(this._dev.id); }catch(e){}
+  var SVC_MAIN='8082caa8-41a6-4021-91c6-56f9b954cc18';
+  var services=[], ok=false;
+  for(var i=0;i<20 && !ok;i++){
+    try{ services=await b.getServices(this._dev.id); }catch(e){ services=[]; }
+    var byUuid={};
+    services.forEach(function(s){ byUuid[normUuid(s.uuid)]=s; });
+    var main=byUuid[normUuid(SVC_MAIN)];
+    ok = !!(main && (main.characteristics||[]).length>=5 && byUuid[normUuid(0x180f)]);
+    if(!ok) await new Promise(function(r){ setTimeout(r,500); });
+  }
   this._services={};
   services.forEach(function(s){ self._services[normUuid(s.uuid)]=new ShimService(self._dev.id,s); });
   this.connected=true;

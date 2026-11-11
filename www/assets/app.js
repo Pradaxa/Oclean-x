@@ -795,11 +795,12 @@ async function runSync(device){
         catch(e){
           dlog('subscribe '+name+' error: '+(e&&e.name)+': '+e.message);
           try{
+            if(typeof ch.getDescriptor!=='function') throw new Error('sin getDescriptor en este backend');
             var cccd=await ch.getDescriptor('00002902-0000-1000-8000-00805f9b34fb');
             await cccd.writeValue(new Uint8Array([1,0]));
             ch.addEventListener('characteristicvaluechanged',handler);
             dlog('subscribe '+name+' OK via CCCD manual'); return true;
-          }catch(e2){ dlog('CCCD manual '+name+' error: '+(e2&&e2.name)+': '+e2.message); }
+          }catch(e2){ dlog('CCCD manual '+name+' no disponible: '+(e2&&e2.message)); }
         }
       }
       if(allowPoll!==false && p.read){ pollChars.push({ch:ch,name:name}); dlog(name+': usaré lectura por sondeo como respaldo'); }
