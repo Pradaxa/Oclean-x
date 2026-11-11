@@ -88,12 +88,15 @@ function todaySessions(){
 /* Tabla de zonas horarias Oclean (minutos) para la calibración 0201 */
 var TZ_MIN = [-720,-660,-600,-540,-480,-420,-360,-300,-240,-210,-180,-120,-60,0,60,120,180,210,240,270,300,330,345,360,390,420,480,540,570,600,660,720,780];
 
-/* ---------- Registro de diagnóstico ---------- */
+/* ---------- Registro de diagnóstico (persistente para poder copiarlo tras reiniciar) ---------- */
+var DBGKEY='cepillo-dbg-v1';
 var diag=[];
+try{ diag=JSON.parse(localStorage.getItem(DBGKEY)||'[]'); }catch(e){}
 function dlog(msg){
   var d=new Date();
   diag.push(pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'.'+String(d.getMilliseconds()).padStart(3,'0')+' '+msg);
   if(diag.length>600) diag.splice(0,diag.length-600);
+  try{ localStorage.setItem(DBGKEY,JSON.stringify(diag)); }catch(e){}
 }
 function hex(u8){ var s=''; for(var i=0;i<u8.length;i++) s+=(u8[i]<16?'0':'')+u8[i].toString(16); return s; }
 
@@ -586,7 +589,8 @@ async function sync(acceptAll){
   if(state.connecting) return;
   if(!navigator.bluetooth){ toast('Safari no trae Bluetooth: activa la extensión beacio (iOS 26.2+) o abre la app en Bluefy'); return; }
   state.connecting=true; state.statusKind='busy'; state.status='Buscando el cepillo…'; render();
-  dlog('--- sync start (acceptAll='+acceptAll+') ---');
+  dlog('--- sync start v'+APP_VERSION+' (acceptAll='+acceptAll+') ---');
+  dlog('backend BLE: '+(window.BleClient?'BleClient(wrapper oficial)':(window.Capacitor&&window.Capacitor.Plugins?(Object.keys(window.Capacitor.Plugins).join(',')||'sin plugins'):'sin Capacitor')));
   var device=null;
   try{
     var opts={ optionalServices:[SVC,BATT_SVC,DIS_SVC] };
@@ -880,6 +884,7 @@ async function runSync(device){
       }
     }
 
+    dlog('estado antes de espera: subOk='+subOk+', sondeo='+pollChars.length+' char(s), batería='+store.battery+', cabezal='+store.headDays);
     // 5) Espera de sesiones y enriquecimiento
     try{ await Promise.race([sessEvent, sleep(subOk?8000:(pollChars.length?4000:3000))]); }catch(e){}
     if(t1.active) flushT1();
@@ -897,7 +902,7 @@ async function runSync(device){
     }catch(e){ dlog('batería 0x2A19 error: '+e.message); }
 
     sortSessions(); save();
-    dlog('--- sync fin: '+store.sessions.length+' sesiones, batería '+store.battery+' ---');
+    dlog('--- sync fin: '+store.sessions.length+' sesiones, batería '+store.battery+', cabezal '+store.headDays+' días, modelo '+(store.model||'?')+' ---');
   } finally {
     try{ server.disconnect(); }catch(e){}
   }
