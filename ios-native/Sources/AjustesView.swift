@@ -49,8 +49,9 @@ struct AjustesView: View {
                             Toggle("Aviso de zonas", isOn: Binding(
                                 get: { store.pending.areaRemind ?? store.areaRemind },
                                 set: { store.pending.areaRemind = $0; store.save() })).tint(Theme.accent)
-                            // "Aviso de tiempo" (0239) quitado: el cepillo no devuelve ese ajuste
-                            // en su estado, así que no podemos verificar que sea real para este modelo.
+                            Toggle("Aviso de tiempo", isOn: Binding(
+                                get: { store.pending.remindSwitch ?? false },
+                                set: { store.pending.remindSwitch = $0; store.save() })).tint(Theme.accent)
                             Toggle("Alerta de presión", isOn: Binding(
                                 get: { store.pending.overPressure ?? store.overPressure },
                                 set: { store.pending.overPressure = $0; store.save() })).tint(Theme.accent)
