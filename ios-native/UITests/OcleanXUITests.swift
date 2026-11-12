@@ -27,12 +27,14 @@ final class OcleanXUITests: XCTestCase {
         let app = launch(["-seedDemo", "-openTab", "ajustes"])
         let t = app.switches["Aviso de zonas"].firstMatch
         XCTAssertTrue(t.waitForExistence(timeout: 15), "no aparece el toggle")
-        let before = t.value as? String
-        t.tap()
-        let exp = expectation(description: "espera al binding")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { exp.fulfill() }
-        wait(for: [exp], timeout: 3)
-        XCTAssertNotEqual(before, t.value as? String, "el toggle no cambió al tocarlo")
+        let before = app.switches["Aviso de zonas"].firstMatch.value as? String ?? "?"
+        app.switches["Aviso de zonas"].firstMatch.tap()
+        // Predicado = snapshot fresco en cada evaluación (t.value cachea)
+        let exp = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value != %@", before),
+            object: app.switches["Aviso de zonas"].firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [exp], timeout: 10), .completed,
+                       "el toggle no cambió al tocarlo")
     }
 
     // El 3D responde al arrastre y al pellizco (gestos SwiftUI -> JS).
