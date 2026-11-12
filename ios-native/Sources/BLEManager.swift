@@ -527,6 +527,13 @@ final class BLEManager: NSObject, ObservableObject {
         if prefix == 0x0302 { // ajustes
             if pay.count >= 1 && pay[0] <= 100 { Task { @MainActor in self.store?.battery = Int(pay[0]) } }
             if pay.count >= 32 {
+                /* DIAGNÓSTICO (investigación modo/potencia, 15:29): volcado crudo
+                   del 0302 en cada sync para mapear qué byte sigue al modo y a la
+                   potencia cuando Adrián los cambia en el cepillo. Las dos
+                   referencias discrepan: parser.py dice modo=byte 5, la tabla
+                   §6.3 dice modo=byte 8; registramos ambos. */
+                dlog("0302 raw: \(hex(pay))")
+                dlog("0302: b5(modo?)=\(pay[5]) b8(modo?)=\(pay[8]) b22=\(pay[22]) b25-28=\(hex(Array(pay[25...28]))) areaRemind=\(pay[23]) headDays=\((Int(pay[29]) << 8) | Int(pay[30])) headTimes=\(pay[31])")
                 Task { @MainActor in
                     self.store?.headDays = (Int(pay[29]) << 8) | Int(pay[30])
                     self.store?.headTimes = Int(pay[31])
