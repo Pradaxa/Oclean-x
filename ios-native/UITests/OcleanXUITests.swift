@@ -22,25 +22,25 @@ final class OcleanXUITests: XCTestCase {
                       "el detalle no abrió al tocar la fila")
     }
 
-    // Los toggles de Ajustes responden.
+    // El toggle de Cambio de zona responde en Ajustes.
     func testAjustesToggleResponde() throws {
         let app = launch(["-seedDemo", "-openTab", "ajustes"])
-        let t = app.switches["Aviso de zonas"].firstMatch
+        let t = app.switches["Cambio de zona"].firstMatch
         XCTAssertTrue(t.waitForExistence(timeout: 15), "no aparece el toggle")
         // Re-resolver antes de tocar (los handles cacheados pueden dar
         // coordenadas viejas si el layout se mueve) y margen amplio: el
         // simulador de CI puede tardar decenas de segundos en aplicar el binding.
-        let before = app.switches["Aviso de zonas"].firstMatch.value as? String ?? "?"
-        let sw = app.switches["Aviso de zonas"].firstMatch
+        let before = app.switches["Cambio de zona"].firstMatch.value as? String ?? "?"
+        let sw = app.switches["Cambio de zona"].firstMatch
         if sw.isHittable { sw.tap() } else { sw.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         let exp = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value != %@", before),
-            object: app.switches["Aviso de zonas"].firstMatch)
+            object: app.switches["Cambio de zona"].firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for: [exp], timeout: 45), .completed,
                        "el toggle no cambió al tocarlo")
     }
 
-    // El 3D responde al arrastre y al pellizco (gestos SwiftUI -> JS).
+    // El 3D responde al arrastre y al pellizco (gestos en JS, reportados por fetch).
     func testRenderGiraYPinch() throws {
         let app = launch(["-seedDemo", "-hoySelectBad", "-openTab", "hoy"])
         let state = app.staticTexts["rot-state"].firstMatch

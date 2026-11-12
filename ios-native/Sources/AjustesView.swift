@@ -5,14 +5,12 @@ struct AjustesView: View {
     @EnvironmentObject var store: BrushStore
     @EnvironmentObject var ble: BLEManager
 
-    @State private var headDaysInput: String = ""
     @State private var showShare = false
     @State private var shareURL: URL? = nil
     @State private var showImporter = false
     @State private var showWipeConfirm = false
     @State private var notice: String? = nil
     @State private var copied = false
-    @State private var motorVal: Double = 50
 
     var body: some View {
         ZStack {
@@ -21,7 +19,10 @@ struct AjustesView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Ajustes").font(.largeTitle.bold()).padding(.top, 8)
 
-                    // Opciones de cepillado
+                    // Opciones de cepillado: SOLO las 4 del menú del cepillo
+                    // (petición de Adrián 11:29): duración, cambio de zona, modo
+                    // y potencia. Modo+potencia+duración se componen en un único
+                    // modo a medida (0206 pnum 0) y se envían al sincronizar.
                     GlassCard {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
@@ -31,92 +32,52 @@ struct AjustesView: View {
                                 }
                             }
 
-                            HStack {
-                                Text("Modo de cepillado")
-                                Spacer(minLength: 24)
-                                Picker("Modo", selection: Binding(
-                                    get: { store.pending.scheme ?? store.brushMode ?? 0 },
-                                    set: { store.pending.scheme = $0; store.save() })) {
-                                    ForEach(SCHEMES.keys.sorted(), id: \.self) { k in
-                                        Text(SCHEMES[k]!.0).lineLimit(1).tag(k)
-                                    }
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Duración del cepillado").font(.subheadline)
+                                Picker("Duración", selection: Binding(
+                                    get: { store.ajDuration },
+                                    set: { store.setAjustes(duration: $0) })) {
+                                    Text("2 min").tag(120)
+                                    Text("2:30").tag(150)
+                                    Text("3 min").tag(180)
                                 }
-                                .pickerStyle(.menu)
-                                .tint(Theme.accent)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false) // no partir el nombre del modo en dos líneas
+                                .pickerStyle(.segmented)
                             }
 
-                            Toggle("Aviso de zonas", isOn: Binding(
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Modo").font(.subheadline)
+                                Picker("Modo", selection: Binding(
+                                    get: { store.ajMode },
+                                    set: { store.setAjustes(mode: $0) })) {
+                                    Text("Limpiar").tag(0)
+                                    Text("Blanquear").tag(1)
+                                    Text("Masajear").tag(2)
+                                }
+                                .pickerStyle(.segmented)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Potencia de cepillado").font(.subheadline)
+                                    Spacer()
+                                    Text("\(store.ajPower)").foregroundColor(.secondary).font(.subheadline.weight(.semibold))
+                                }
+                                Slider(value: Binding(
+                                    get: { Double(store.ajPower) },
+                                    set: { store.setAjustes(power: Int($0)) }), in: 1...32, step: 1)
+                                    .tint(Theme.accent)
+                            }
+
+                            Toggle("Cambio de zona", isOn: Binding(
                                 get: { store.pending.areaRemind ?? store.areaRemind },
-                                set: { store.pending.areaRemind = $0; store.save() })).tint(Theme.accent)
-                            Toggle("Aviso de tiempo", isOn: Binding(
-                                get: { store.pending.remindSwitch ?? false },
-                                set: { store.pending.remindSwitch = $0; store.save() })).tint(Theme.accent)
-                            Toggle("Apagado automático", isOn: Binding(
-                                get: { store.pending.runningSwitch ?? false },
-                                set: { store.pending.runningSwitch = $0; store.save() })).tint(Theme.accent)
-                            Toggle("Alerta de presión", isOn: Binding(
-                                get: { store.pending.overPressure ?? store.overPressure },
-                                set: { store.pending.overPressure = $0; store.save() })).tint(Theme.accent)
+                                set: { store.setAreaRemind($0) })).tint(Theme.accent)
 
-                            Divider().background(Color.white.opacity(0.08))
-
-                            HStack {
-                                Text("Días de vida del cabezal")
-                                Spacer()
-                                TextField("90", text: $headDaysInput)
-                                    .keyboardType(.numberPad)
-                                    .multilineTextAlignment(.center)
-                                    .frame(width: 64)
-                                    .padding(.vertical, 6)
-                                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.08)))
-                                Button("Aplicar") {
-                                    if let v = Int(headDaysInput), v >= 1, v <= 365 {
-                                        store.pending.headDays = v; store.save()
-                                        notice = "Se aplicará en la próxima sincronización"
-                                    }
-                                }.glassGhostButton()
-                            }
-                            HStack {
-                                Text("Reiniciar contador de cabezal")
-                                Spacer()
-                                Button("Reiniciar") {
-                                    store.pending.resetHead = true; store.save()
-                                    notice = "Se aplicará en la próxima sincronización"
-                                }.glassGhostButton()
-                            }
-
-                            Text("Los cambios se envían al cepillo en la próxima sincronización y se comprueban contra su estado real. Potencia y duración vienen definidas por el modo elegido.")
+                            Text("Los cambios se envían al cepillo en la próxima sincronización y se comprueban contra su estado real.")
                                 .font(.footnote).foregroundColor(.secondary)
                             if let chk = store.settingsCheck {
                                 Text("Verificación con el cepillo: \(chk)")
                                     .font(.caption).foregroundColor(.secondary)
                             }
-                        }
-                    }
-
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Experimental").font(.headline)
-                            Toggle("Gesto de activación", isOn: Binding(
-                                get: { store.pending.wakeGesture ?? true },
-                                set: { store.pending.wakeGesture = $0; store.save(); notice = "Se aplicará en la próxima sincronización" })).tint(Theme.accent)
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Velocidad del motor")
-                                    Spacer()
-                                    Text("\(Int(motorVal))").foregroundColor(.secondary).font(.subheadline)
-                                }
-                                Slider(value: $motorVal, in: 0...100, step: 1) { editing in
-                                    if !editing { store.pending.motorSpeed = Int(motorVal); store.save(); notice = "Se aplicará en la próxima sincronización" }
-                                }.tint(Theme.accent)
-                            }
-                            Text("Estos ajustes no están confirmados para el Oclean X. Se envían acotados a valores seguros y reversibles; lo que responda el cepillo queda en Diagnóstico. Si alguno no hace nada, simplemente no es compatible.")
-                                .font(.footnote).foregroundColor(.secondary)
-                        }
-                        .onAppear {
-                            if let m = store.pending.motorSpeed { motorVal = Double(m) }
                         }
                     }
 

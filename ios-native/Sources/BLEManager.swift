@@ -272,43 +272,17 @@ final class BLEManager: NSObject, ObservableObject {
             if !pend.isEmpty {
                 dlog("aplicando ajustes pendientes")
                 var allOk = true
-                if let scheme = pend.scheme, let pkts = buildSchemePackets(scheme) {
+                if let g = pend.customGear, let secs = pend.customSeconds {
+                    let pkts = buildCustomPackets(gear: g, totalSeconds: secs)
                     for pkt in pkts {
                         if !(await writeOK(pkt, to: w, on: p)) { allOk = false }
                         try? await Task.sleep(nanoseconds: 80_000_000)
                     }
-                    if allOk { await MainActor.run { st.brushMode = scheme } }
+                    if allOk { await MainActor.run { st.brushMode = 0 } }
+                    dlog("modo a medida -> gear \(g), \(secs)s (pnum 0)")
                 }
                 if let v = pend.areaRemind {
                     if await writeOK([0x02, 0x0d, v ? 1 : 0], to: w, on: p) { await MainActor.run { st.areaRemind = v } } else { allOk = false }
-                }
-                if let v = pend.remindSwitch {
-                    if !(await writeOK([0x02, 0x39, v ? 1 : 0], to: w, on: p)) { allOk = false }
-                }
-                if let v = pend.runningSwitch {
-                    if !(await writeOK([0x02, 0x40, v ? 1 : 0], to: w, on: p)) { allOk = false }
-                }
-                // Experimentales: valores acotados y reversibles; se anotan en el registro
-                if let v = pend.wakeGesture {
-                    let ok = await writeOK([0x02, 0x09, v ? 0x01 : 0xEC], to: w, on: p)
-                    dlog("experimental gesto activacion -> \(v ? "01" : "EC"): \(ok ? "enviado" : "fallo")")
-                    if !ok { allOk = false }
-                }
-                if let ms = pend.motorSpeed {
-                    let v = max(0, min(100, ms))
-                    let ok = await writeOK([0x02, 0x07, 0, 0, UInt8((v >> 8) & 0xff), UInt8(v & 0xff)], to: w, on: p)
-                    dlog("experimental velocidad motor -> \(v): \(ok ? "enviado" : "fallo")")
-                    if !ok { allOk = false }
-                }
-                if let v = pend.overPressure {
-                    if await writeOK([0x02, 0x12, v ? 1 : 0], to: w, on: p) { await MainActor.run { st.overPressure = v } } else { allOk = false }
-                }
-                if let hd = pend.headDays {
-                    let v = max(1, min(365, hd))
-                    if await writeOK([0x02, 0x17, UInt8((v >> 8) & 0xff), UInt8(v & 0xff)], to: w, on: p) { await MainActor.run { st.headDays = v } } else { allOk = false }
-                }
-                if pend.resetHead == true {
-                    if await writeOK([0x02, 0x0f], to: w, on: p) { await MainActor.run { st.headTimes = 0 } } else { allOk = false }
                 }
                 if allOk { await MainActor.run { st.pending = PendingSettings(); st.save() }; dlog("ajustes aplicados") }
                 else { dlog("algunos ajustes no se pudieron enviar; quedan pendientes") }
@@ -320,13 +294,13 @@ final class BLEManager: NSObject, ObservableObject {
                     try? await Task.sleep(nanoseconds: 400_000_000)
                     try? await write([0x03, 0x02, 0x01], to: send, on: p)
                     try? await Task.sleep(nanoseconds: 900_000_000)
-                    let cur = await MainActor.run { (st.brushMode, st.areaRemind, st.overPressure, st.headDays, st.headTimes) }
+                    let cur = await MainActor.run { (st.brushMode, st.areaRemind) }
                     var checks: [String] = []
-                    if let scheme = pend.scheme { checks.append(cur.0 == scheme ? "modo OK" : "modo NO confirmado por el cepillo") }
-                    if let v = pend.areaRemind { checks.append(cur.1 == v ? "aviso zonas OK" : "aviso zonas NO confirmado") }
-                    if let v = pend.overPressure { checks.append(cur.2 == v ? "alerta presion OK" : "alerta presion NO confirmada") }
-                    if let hd = pend.headDays { checks.append(cur.3 == max(1, min(365, hd)) ? "dias cabezal OK" : "dias cabezal NO confirmado") }
-                    if pend.resetHead == true { checks.append(cur.4 == 0 ? "reinicio cabezal OK" : "reinicio cabezal NO confirmado") }
+                    /* El 0302 solo confirma el pnum (0 = modo actual), no el gear
+                       ni la duración: potencia/modo exactos los confirma Adrián
+                       mirando la pantalla del cepillo o al cepillarse. */
+                    if pend.customGear != nil { checks.append(cur.0 == 0 ? "modo OK (pnum 0 confirmado)" : "modo NO confirmado por el cepillo") }
+                    if let v = pend.areaRemind { checks.append(cur.1 == v ? "cambio de zona OK" : "cambio de zona NO confirmado") }
                     if !checks.isEmpty {
                         let rep = checks.joined(separator: " - ")
                         dlog("verificacion de ajustes: \(rep)")
@@ -553,7 +527,6 @@ final class BLEManager: NSObject, ObservableObject {
                     self.store?.headDays = (Int(pay[29]) << 8) | Int(pay[30])
                     self.store?.headTimes = Int(pay[31])
                     self.store?.brushMode = Int(pay[5])
-                    self.store?.overPressure = pay[8] != 0
                     self.store?.areaRemind = pay[23] != 0
                 }
             }

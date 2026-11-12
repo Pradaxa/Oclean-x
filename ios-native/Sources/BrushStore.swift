@@ -16,18 +16,27 @@ struct BrushSession: Codable, Identifiable {
 }
 
 struct PendingSettings: Codable {
-    var scheme: Int?
+    /* Modo a medida (0206 pnum 0): gear compuesto + duración total en segundos.
+       Van siempre juntos: son un único paquete de esquema. */
+    var customGear: Int?
+    var customSeconds: Int?
+    /* Cambio de zona: aviso cada 30s para cambiar de cuadrante (020D on/off) */
     var areaRemind: Bool?
-    var remindSwitch: Bool?
-    var runningSwitch: Bool?
-    var overPressure: Bool?
-    var headDays: Int?
-    var resetHead: Bool?
-    // Experimentales (sin verificacion posible; se registran en Diagnostico)
-    var wakeGesture: Bool?
-    var motorSpeed: Int?
     var isEmpty: Bool {
-        scheme == nil && areaRemind == nil && remindSwitch == nil && runningSwitch == nil && overPressure == nil && headDays == nil && resetHead == nil && wakeGesture == nil && motorSpeed == nil
+        customGear == nil && customSeconds == nil && areaRemind == nil
+    }
+}
+
+/* Gear compuesto a partir de modo + potencia (1-32), igual que el menú del
+   cepillo. HECHO (API oficial): gears 1-32 = limpieza, 33-36 = blanqueado 1-4,
+   37-40 = masaje 1-4. SUPOSICIÓN: cómo se reparte la potencia 1-32 sobre los 4
+   gears de blanqueado/masaje (por cuartiles); en limpieza va directa. */
+func composedGear(mode: Int, power: Int) -> Int {
+    let p = max(1, min(32, power))
+    switch mode {
+    case 1: return 33 + (p - 1) / 8  // blanquear -> 33-36
+    case 2: return 37 + (p - 1) / 8  // masajear -> 37-40
+    default: return p                // limpiar  -> 1-32
     }
 }
 
@@ -61,11 +70,19 @@ func schemeName(_ pnum: Int?) -> String {
     return pnum == nil ? "Cepillado" : "Programa \(pnum!)"
 }
 
-/* 0206 modo: paquetes de esquema (port de buildSchemePackets) */
-func buildSchemePackets(_ pnum: Int) -> [[UInt8]]? {
-    guard let s = SCHEMES[pnum] else { return nil }
-    var pl: [UInt8] = [0x02, 0x06, UInt8(pnum & 0xff), UInt8(s.1.count & 0xff)]
-    for st in s.1 { pl.append(UInt8(GEAR_ENC[st[0]] ?? 0)); pl.append(UInt8(st[0] & 0xff)); pl.append(UInt8(st[1] & 0xff)) }
+/* Modo a medida: un único gear repetido en tramos de 30s hasta la duración
+   (2:00 / 2:30 / 3:00 -> 4 / 5 / 6 tramos). Se escribe como pnum 0, el modo
+   "actual" del cepillo. SUPOSICIÓN verificable: pnum 0 es donde el cepillo
+   guarda su modo del menú; tras sincronizar, el cepillo debería mostrar el
+   modo elegido y el 0302 confirmar pnum 0. */
+func buildCustomPackets(gear: Int, totalSeconds: Int) -> [[UInt8]] {
+    let steps = max(1, min(8, totalSeconds / 30))
+    var pl: [UInt8] = [0x02, 0x06, 0x00, UInt8(steps)]
+    for _ in 0..<steps {
+        pl.append(UInt8(GEAR_ENC[gear] ?? 0))
+        pl.append(UInt8(gear & 0xff))
+        pl.append(30)
+    }
     pl.append(0x00); pl.append(0x05)
     if pl.count > 20 {
         return [Array(pl.prefix(16)) + [0x2a, 0x2b], [0x02, 0x0b] + Array(pl.dropFirst(16))]
@@ -125,12 +142,33 @@ final class BrushStore: ObservableObject {
     @Published var headDays: Int? = nil
     @Published var headTimes: Int? = nil
     @Published var brushMode: Int? = nil
-    @Published var overPressure: Bool = false
     @Published var areaRemind: Bool = false
     @Published var model: String? = nil
     @Published var pending = PendingSettings()
     @Published var lastSess: Int = -1
     @Published var lastSync: Double? = nil
+
+    /* Opciones de cepillado (las 4 del menú del cepillo, petición de Adrián):
+       modo 0=limpiar/1=blanquear/2=masajear, potencia 1-32, duración en
+       segundos. La app no puede leer del cepillo la potencia ni el modo actual
+       (el 0302 solo confirma pnum), así que muestra lo elegido aquí. */
+    @Published var ajMode: Int = 0
+    @Published var ajPower: Int = 16
+    @Published var ajDuration: Int = 120
+
+    func setAjustes(mode: Int? = nil, power: Int? = nil, duration: Int? = nil) {
+        if let mode { ajMode = mode }
+        if let power { ajPower = max(1, min(32, power)) }
+        if let duration { ajDuration = duration }
+        pending.customGear = composedGear(mode: ajMode, power: ajPower)
+        pending.customSeconds = ajDuration
+        save()
+    }
+
+    func setAreaRemind(_ v: Bool) {
+        pending.areaRemind = v
+        save()
+    }
     // Resultado de la verificación de ajustes contra el cepillo (transitorio, no se guarda)
     @Published var settingsCheck: String? = nil
 
@@ -141,8 +179,9 @@ final class BrushStore: ObservableObject {
     private struct Persisted: Codable {
         var sessions: [BrushSession]
         var battery: Int?; var headDays: Int?; var headTimes: Int?
-        var brushMode: Int?; var overPressure: Bool; var areaRemind: Bool
+        var brushMode: Int?; var areaRemind: Bool
         var model: String?; var pending: PendingSettings; var lastSync: Double?
+        var ajMode: Int?; var ajPower: Int?; var ajDuration: Int?
     }
 
     init() {
@@ -152,7 +191,7 @@ final class BrushStore: ObservableObject {
             sessions = Self.samples()
             battery = 82; headDays = 90; headTimes = 12
             brushMode = 0; model = "OCLEANY3"
-            areaRemind = true; overPressure = true
+            areaRemind = true
             lastSync = Date().timeIntervalSince1970 * 1000; lastSess = 0
         }
     }
@@ -214,15 +253,17 @@ final class BrushStore: ObservableObject {
     func wipe() {
         sessions = []; battery = nil; headTimes = nil; headDays = nil
         model = nil; lastSync = nil; lastSess = -1
-        brushMode = nil; areaRemind = false; overPressure = false
+        brushMode = nil; areaRemind = false
         pending = PendingSettings()
+        ajMode = 0; ajPower = 16; ajDuration = 120
         save()
     }
 
     func save() {
         let p = Persisted(sessions: sessions, battery: battery, headDays: headDays, headTimes: headTimes,
-                          brushMode: brushMode, overPressure: overPressure, areaRemind: areaRemind,
-                          model: model, pending: pending, lastSync: lastSync)
+                          brushMode: brushMode, areaRemind: areaRemind,
+                          model: model, pending: pending, lastSync: lastSync,
+                          ajMode: ajMode, ajPower: ajPower, ajDuration: ajDuration)
         if let d = try? JSONEncoder().encode(p) { try? d.write(to: fileURL, options: .atomic) }
     }
 
@@ -230,8 +271,9 @@ final class BrushStore: ObservableObject {
         guard let d = try? Data(contentsOf: fileURL),
               let p = try? JSONDecoder().decode(Persisted.self, from: d) else { return }
         sessions = p.sessions; battery = p.battery; headDays = p.headDays; headTimes = p.headTimes
-        brushMode = p.brushMode; overPressure = p.overPressure; areaRemind = p.areaRemind
+        brushMode = p.brushMode; areaRemind = p.areaRemind
         model = p.model; pending = p.pending; lastSync = p.lastSync
+        ajMode = p.ajMode ?? 0; ajPower = p.ajPower ?? 16; ajDuration = p.ajDuration ?? 120
     }
 }
 
