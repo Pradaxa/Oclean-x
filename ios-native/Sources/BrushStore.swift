@@ -16,8 +16,8 @@ struct BrushSession: Codable, Identifiable {
 }
 
 struct PendingSettings: Codable {
-    /* Modo a medida (0206 pnum 0): gear compuesto + duración total en segundos.
-       Van siempre juntos: son un único paquete de esquema. */
+    /* Modo y potencia (0206 sobre programa de fábrica): gear compuesto +
+       duración total en segundos. Van siempre juntos: un único paquete. */
     var customGear: Int?
     var customSeconds: Int?
     /* Cambio de zona: aviso cada 30s para cambiar de cuadrante (020D on/off) */
@@ -72,11 +72,16 @@ func schemeName(_ pnum: Int?) -> String {
     return pnum == nil ? "Cepillado" : "Programa \(pnum!)"
 }
 
-/* Modo a medida: un único gear repetido en tramos de 30s hasta la duración
-   (2:00 / 2:30 / 3:00 -> 4 / 5 / 6 tramos). Se escribe como pnum 0, el modo
-   "actual" del cepillo. SUPOSICIÓN verificable: pnum 0 es donde el cepillo
-   guarda su modo del menú; tras sincronizar, el cepillo debería mostrar el
-   modo elegido y el 0302 confirmar pnum 0. */
+/* HECHO (probado con nRF en el OCLEANY3 de Adrián, 12-nov 17:43): escribir un
+   programa de FÁBRICA con 0206 lo activa y el cepillo adopta gears y duración
+   (pnum 84 gear 40 -> pantalla "Masajear 4"). Escribir pnum 0 es un no-op en
+   su firmware (ACK OK pero no cambia nada; el "18" era basura de pantalla).
+   Vehículos: Limpiar -> pnum 72, Blanquear -> pnum 75, Masajear -> pnum 84.
+   Efecto secundario conocido: la definición de esos programas en el cepillo
+   queda sobrescrita con nuestros tramos. */
+func programPnum(forGear gear: Int) -> Int { gear >= 37 ? 84 : (gear >= 33 ? 75 : 72) }
+func mode(forGear gear: Int) -> Int { gear >= 37 ? 2 : (gear >= 33 ? 1 : 0) }
+
 func buildCustomPackets(gear: Int, totalSeconds: Int) -> [[UInt8]] {
     /* Máximo 4 tramos: con 4 el paquete mide 18 bytes y cabe en UNA escritura
        BLE (MTU 23). Con 5-6 tramos (2:30/3:00 a 30s) salía partido en dos
@@ -86,7 +91,7 @@ func buildCustomPackets(gear: Int, totalSeconds: Int) -> [[UInt8]] {
        APK (pnum 85 lleva un tramo de 20s; pnum 88 son todos de 20s). */
     let steps = totalSeconds <= 120 ? max(1, totalSeconds / 30) : 4
     let base = totalSeconds / steps, extra = totalSeconds % steps
-    var pl: [UInt8] = [0x02, 0x06, 0x00, UInt8(steps)]
+    var pl: [UInt8] = [0x02, 0x06, UInt8(programPnum(forGear: gear) & 0xff), UInt8(steps)]
     for i in 0..<steps {
         pl.append(UInt8(GEAR_ENC[gear] ?? 0))
         pl.append(UInt8(gear & 0xff))

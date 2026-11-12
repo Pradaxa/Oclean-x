@@ -23,7 +23,7 @@ struct AjustesView: View {
                     // Opciones de cepillado: SOLO las 4 del menú del cepillo
                     // (petición de Adrián 11:29): duración, cambio de zona, modo
                     // y potencia. Modo+potencia+duración se componen en un único
-                    // modo a medida (0206 pnum 0) y se envían al sincronizar.
+                    // programa de fábrica vía 0206 y se envían al sincronizar.
                     GlassCard {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {

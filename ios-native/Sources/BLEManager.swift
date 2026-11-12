@@ -296,8 +296,8 @@ final class BLEManager: NSObject, ObservableObject {
                         if !(await writeOK(pkt, to: w, on: p)) { allOk = false }
                         try? await Task.sleep(nanoseconds: 80_000_000)
                     }
-                    if allOk { await MainActor.run { st.brushMode = 0 } }
-                    dlog("modo a medida -> gear \(g), \(secs)s (pnum 0)")
+                    if allOk { await MainActor.run { st.brushMode = mode(forGear: g) } }
+                    dlog("programa pnum \(programPnum(forGear: g)) -> gear \(g), \(secs)s")
                 }
                 if let v = pend.areaRemind {
                     if await writeOK([0x02, 0x0d, v ? 1 : 0], to: w, on: p) { await MainActor.run { st.areaRemind = v } } else { allOk = false }
@@ -317,10 +317,10 @@ final class BLEManager: NSObject, ObservableObject {
                     try? await Task.sleep(nanoseconds: 900_000_000)
                     let cur = await MainActor.run { (st.brushMode, st.areaRemind, st.headDays) }
                     var checks: [String] = []
-                    /* El 0302 solo confirma el pnum (0 = modo actual), no el gear
-                       ni la duración: potencia/modo exactos los confirma Adrián
+                    /* El 0302 solo confirma el modo activo (byte 5), no el gear
+                       ni la duración: potencia exacta la confirma Adrián
                        mirando la pantalla del cepillo o al cepillarse. */
-                    if pend.customGear != nil { checks.append(cur.0 == 0 ? "modo OK (pnum 0 confirmado)" : "modo NO confirmado por el cepillo") }
+                    if let g = pend.customGear { checks.append(cur.0 == mode(forGear: g) ? "modo OK (confirmado por el cepillo)" : "modo NO confirmado por el cepillo") }
                     if let v = pend.areaRemind { checks.append(cur.1 == v ? "cambio de zona OK" : "cambio de zona NO confirmado") }
                     if pend.headReset == true { checks.append((cur.2 ?? -1) == 0 ? "cabezal OK (contador a 0)" : "cabezal NO confirmado por el cepillo") }
                     if !checks.isEmpty {
