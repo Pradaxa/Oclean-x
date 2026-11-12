@@ -284,6 +284,9 @@ final class BLEManager: NSObject, ObservableObject {
                 if let v = pend.areaRemind {
                     if await writeOK([0x02, 0x0d, v ? 1 : 0], to: w, on: p) { await MainActor.run { st.areaRemind = v } } else { allOk = false }
                 }
+                if pend.headReset == true {
+                    if await writeOK([0x02, 0x0f], to: w, on: p) { dlog("cambio de cabezal -> contador reiniciado (020F)") } else { allOk = false }
+                }
                 if allOk { await MainActor.run { st.pending = PendingSettings(); st.save() }; dlog("ajustes aplicados") }
                 else { dlog("algunos ajustes no se pudieron enviar; quedan pendientes") }
 
@@ -294,13 +297,14 @@ final class BLEManager: NSObject, ObservableObject {
                     try? await Task.sleep(nanoseconds: 400_000_000)
                     try? await write([0x03, 0x02, 0x01], to: send, on: p)
                     try? await Task.sleep(nanoseconds: 900_000_000)
-                    let cur = await MainActor.run { (st.brushMode, st.areaRemind) }
+                    let cur = await MainActor.run { (st.brushMode, st.areaRemind, st.headDays) }
                     var checks: [String] = []
                     /* El 0302 solo confirma el pnum (0 = modo actual), no el gear
                        ni la duración: potencia/modo exactos los confirma Adrián
                        mirando la pantalla del cepillo o al cepillarse. */
                     if pend.customGear != nil { checks.append(cur.0 == 0 ? "modo OK (pnum 0 confirmado)" : "modo NO confirmado por el cepillo") }
                     if let v = pend.areaRemind { checks.append(cur.1 == v ? "cambio de zona OK" : "cambio de zona NO confirmado") }
+                    if pend.headReset == true { checks.append((cur.2 ?? -1) == 0 ? "cabezal OK (contador a 0)" : "cabezal NO confirmado por el cepillo") }
                     if !checks.isEmpty {
                         let rep = checks.joined(separator: " - ")
                         dlog("verificacion de ajustes: \(rep)")

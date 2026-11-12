@@ -22,8 +22,10 @@ struct PendingSettings: Codable {
     var customSeconds: Int?
     /* Cambio de zona: aviso cada 30s para cambiar de cuadrante (020D on/off) */
     var areaRemind: Bool?
+    /* Cabezal nuevo: reinicia el contador de días/usos del cabezal (020F) */
+    var headReset: Bool?
     var isEmpty: Bool {
-        customGear == nil && customSeconds == nil && areaRemind == nil
+        customGear == nil && customSeconds == nil && areaRemind == nil && headReset == nil
     }
 }
 
@@ -178,6 +180,14 @@ final class BrushStore: ObservableObject {
         pending.areaRemind = v
         save()
     }
+
+    /* Pedido de Adrián (14:42): botón "Cambiar cabezal" que reinicia el
+       contador de 90 días. Se envía al cepillo (020F) en la próxima
+       sincronización y se verifica que el contador queda a 0. */
+    func requestHeadReset() {
+        pending.headReset = true
+        save()
+    }
     // Resultado de la verificación de ajustes contra el cepillo (transitorio, no se guarda)
     @Published var settingsCheck: String? = nil
 
@@ -198,7 +208,7 @@ final class BrushStore: ObservableObject {
         // Datos de demostración solo para capturas del simulador (-seedDemo); no se guardan.
         if ProcessInfo.processInfo.arguments.contains("-seedDemo") {
             sessions = Self.samples()
-            battery = 82; headDays = 90; headTimes = 12
+            battery = 82; headDays = 23; headTimes = 41
             brushMode = 0; model = "OCLEANY3"
             areaRemind = true
             lastSync = Date().timeIntervalSince1970 * 1000; lastSess = 0

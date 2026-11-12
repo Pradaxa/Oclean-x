@@ -11,6 +11,7 @@ struct AjustesView: View {
     @State private var showWipeConfirm = false
     @State private var notice: String? = nil
     @State private var copied = false
+    @State private var showHeadConfirm = false
 
     var body: some View {
         ZStack {
@@ -117,6 +118,31 @@ struct AjustesView: View {
                                 Spacer()
                                 Text(store.model ?? "—")
                             }.font(.subheadline)
+
+                            // Cabezal: contador de 90 días leído del cepillo (0302)
+                            // y botón "Cambiar cabezal" que lo reinicia (020F en la
+                            // próxima sincronización). Pedido de Adrián (14:42).
+                            Divider().padding(.vertical, 4)
+                            HStack {
+                                Text("Cabezal").foregroundColor(.secondary)
+                                Spacer()
+                                if let hd = store.headDays {
+                                    let left = max(0, 90 - hd)
+                                    Text(left > 0 ? "quedan \(left) de 90 días · \(store.headTimes ?? 0) usos" : "toca cambiarlo · \(store.headTimes ?? 0) usos")
+                                } else {
+                                    Text("sincroniza para leerlo")
+                                }
+                            }.font(.subheadline)
+                            HStack {
+                                if store.pending.headReset == true {
+                                    Text("Se reiniciará en la próxima sincronización")
+                                        .font(.footnote).foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Button("Cambiar cabezal") { showHeadConfirm = true }
+                                    .glassGhostButton()
+                                    .disabled(store.pending.headReset == true)
+                            }
                             Text("Si usas también la app oficial de Oclean, sincroniza primero aquí: la oficial puede vaciar la memoria del cepillo al conectar.")
                                 .font(.footnote).foregroundColor(.secondary)
                         }
@@ -183,6 +209,10 @@ struct AjustesView: View {
         }
         .confirmationDialog("¿Borrar todo? Se eliminan historial y ajustes guardados.", isPresented: $showWipeConfirm, titleVisibility: .visible) {
             Button("Borrar todo", role: .destructive) { store.wipe(); ble.clearLog(); notice = "Datos borrados" }
+            Button("Cancelar", role: .cancel) {}
+        }
+        .confirmationDialog("¿Has puesto un cabezal nuevo? El contador de 90 días vuelve a 0 en la próxima sincronización.", isPresented: $showHeadConfirm, titleVisibility: .visible) {
+            Button("Cambiar cabezal") { store.requestHeadReset() }
             Button("Cancelar", role: .cancel) {}
         }
     }

@@ -185,9 +185,11 @@ struct HoyView: View {
     }
 
     private var headText: String {
+        /* headDays = días de uso del cabezal (0302 bytes 29-30, desde el último
+           cambio). El contador es de 90 días (pedido de Adrián 14:42). */
         if let hd = store.headDays {
-            let left = max(0, hd - (store.headTimes ?? 0))
-            return "quedan \(left) días"
+            let left = max(0, 90 - hd)
+            return left > 0 ? "quedan \(left) días" : "toca cambiarlo"
         }
         return "—"
     }
