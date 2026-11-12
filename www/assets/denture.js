@@ -274,7 +274,7 @@ export async function mountLive(canvas, classes) {
     if (!raf) raf = requestAnimationFrame(frame);
   }
   function down(e) {
-    if (nativeDrag) return;
+    if (nativeDrag || gestureActive) return;
     if (ptrs.size === 0) lockScroll(true);
     ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (nativeShell && ptrs.size === 2) {
@@ -288,7 +288,7 @@ export async function mountLive(canvas, classes) {
     if (!raf) raf = requestAnimationFrame(frame);
   }
   function move(e) {
-    if (nativeDrag || !ptrs.has(e.pointerId)) return;
+    if (nativeDrag || gestureActive || !ptrs.has(e.pointerId)) return;
     ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (e.cancelable) e.preventDefault();
     if (nativeShell && ptrs.size === 2) { // pellizco: zoom por distancia entre dedos
@@ -305,6 +305,7 @@ export async function mountLive(canvas, classes) {
     px = e.clientX; py = e.clientY;
   }
   function up(e) {
+    if (gestureActive) return;
     ptrs.delete(e.pointerId);
     if (ptrs.size === 0) lockScroll(false);
     if (ptrs.size < 2) pinchD = 0;
@@ -313,7 +314,7 @@ export async function mountLive(canvas, classes) {
       const wasTap = movedPx < 12;
       dragging = false;
       // doble toque -> posicion inicial (la web usa dblclick, que en iOS no es fiable)
-      if (nativeShell && wasTap) {
+      if (nativeShell && wasTap && performance.now() - lastGestureEnd > 500) {
         const n = performance.now();
         if (n - lastTap < 320) { reset(); lastTap = 0; } else lastTap = n;
       }
@@ -329,17 +330,33 @@ export async function mountLive(canvas, classes) {
      dedos a sus eventos gesture* en lugar de pointer events (p. ej. el
      pellizco sintetizado por las pruebas de UI). Solo cuenta si el pellizco
      por punteros no está activo, para no aplicar el zoom dos veces. */
-  let gScale = 1;
-  canvas.addEventListener('gesturestart', function (e) { e.preventDefault(); gScale = e.scale || 1; });
+  /* Si WebKit dispara sus eventos gesture* (p. ej. el pellizco sintetizado de
+     las pruebas de UI), esa via es la unica que manda: se limpia el estado de
+     punteros para no aplicar el zoom dos veces ni quedar bloqueado si los
+     pointerdown ya habian llegado (la carrera que hacia fallar el test a
+     ratos). Con dedos reales y touch-action:none, WebKit no los dispara y
+     manda la via de punteros. */
+  let gScale = 1, gestureActive = false, lastGestureEnd = 0;
+  canvas.addEventListener('gesturestart', function (e) {
+    e.preventDefault();
+    if (!nativeShell) return;
+    gestureActive = true;
+    ptrs.clear(); dragging = false; pinchD = 0; lockScroll(true);
+    gScale = e.scale || 1;
+  });
   canvas.addEventListener('gesturechange', function (e) {
     e.preventDefault();
-    if (!nativeShell || ptrs.size >= 2) { gScale = e.scale || 1; return; }
+    if (!nativeShell || !gestureActive) { gScale = e.scale || 1; return; }
     const s = e.scale || 1;
     if (gScale > 0) tZoom = Math.max(0.5, Math.min(3, tZoom * s / gScale));
     gScale = s;
     if (!raf) raf = requestAnimationFrame(frame);
   });
-  canvas.addEventListener('gestureend', function (e) { e.preventDefault(); gScale = 1; });
+  canvas.addEventListener('gestureend', function (e) {
+    e.preventDefault();
+    gestureActive = false; gScale = 1; lastGestureEnd = performance.now();
+    lockScroll(false);
+  });
   renderer.render(scene, cam); // estático hasta que se toca
   const api = {
     dispose() { dead = true; cancelAnimationFrame(raf); lockScroll(false); liveByCanvas.delete(canvas); renderer.dispose(); },
