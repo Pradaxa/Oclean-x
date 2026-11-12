@@ -111,12 +111,12 @@ final class BLEManager: NSObject, ObservableObject {
         }
     }
 
-    func sync() {
+    func sync(auto: Bool = false) {
         guard !connecting else { return }
         connecting = true
         Task { @MainActor in self.offerScanAll = false }
-        dlog("--- sync inicio ---")
-        runWithStatus(known: nil)
+        dlog("--- sync inicio\(auto ? " (automático al abrir)" : "") ---")
+        runWithStatus(known: nil, auto: auto, attempt: 1)
     }
 
     func connectCandidate(_ c: BleCandidate) {
@@ -124,10 +124,10 @@ final class BLEManager: NSObject, ObservableObject {
         connecting = true
         Task { @MainActor in self.offerScanAll = false }
         dlog("conectando con candidato: \(c.name)")
-        runWithStatus(known: p)
+        runWithStatus(known: p, auto: false, attempt: 1)
     }
 
-    private func runWithStatus(known: CBPeripheral?) {
+    private func runWithStatus(known: CBPeripheral?, auto: Bool, attempt: Int) {
         Task {
             await setStatus("Buscando el cepillo…", busy: true)
             do {
@@ -136,16 +136,40 @@ final class BLEManager: NSObject, ObservableObject {
                 if n == 0 { await setStatus("Sincronizado · sin sesiones nuevas en el cepillo", busy: false) }
                 else if n > 0 { await setStatus("Sincronizado · \(n) \(n == 1 ? "sesión nueva" : "sesiones nuevas")", busy: false) }
                 else { await setStatus("Sincronizado", busy: false) }
-            } catch SyncError.notFound {
-                await setStatus("No apareció. Despierta el cepillo (levántalo) y reintenta", busy: false)
-                await MainActor.run { self.offerScanAll = true }
-                dlog("cepillo no encontrado (timeout escaneo)")
-            } catch SyncError.bluetoothOff {
-                await setStatus("Activa el Bluetooth del iPhone", busy: false)
+                connecting = false
+                return
             } catch {
-                await setStatus("Falló la sincronización. Reintenta con el cepillo cerca", busy: false)
+                /* Autosync al abrir: el cepillo suele estar dormido y tarda unos
+                   segundos en anunciarse al levantarlo. Reintenta hasta 3 veces
+                   (con pausa de 5s) antes de rendirse. La sincronización manual
+                   falla a la primera, como siempre. */
+                if auto, attempt < 3,
+                   (error as? SyncError) == .notFound || (error as? SyncError) == .connectFailed {
+                    dlog("autosync intento \(attempt) sin cepillo; reintento en 5s")
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    runWithStatus(known: known, auto: auto, attempt: attempt + 1)
+                    return
+                }
+                switch error {
+                case SyncError.notFound:
+                    await setStatus("No apareció. Despierta el cepillo (levántalo) y reintenta", busy: false)
+                    if !auto { await MainActor.run { self.offerScanAll = true } }
+                    dlog("cepillo no encontrado (timeout escaneo)")
+                case SyncError.connectFailed:
+                    if UserDefaults.standard.string(forKey: savedBrushKey) != nil {
+                        // Con id guardado el connect queda pendiente hasta que el
+                        // cepillo despierta; si expira es que sigue dormido.
+                        await setStatus("El cepillo está dormido. Levántalo y reintenta", busy: false)
+                    } else {
+                        await setStatus("Falló la sincronización. Reintenta con el cepillo cerca", busy: false)
+                    }
+                case SyncError.bluetoothOff:
+                    await setStatus("Activa el Bluetooth del iPhone", busy: false)
+                default:
+                    await setStatus("Falló la sincronización. Reintenta con el cepillo cerca", busy: false)
+                }
+                connecting = false
             }
-            connecting = false
         }
     }
 

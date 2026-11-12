@@ -14,18 +14,12 @@ struct HoyView: View {
         ZStack {
             Theme.bgGradient.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 8) {
-                // Cabecera: título + estado de conexión en la misma fila
-                HStack(alignment: .center, spacing: 7) {
-                    Text("Oclean").font(.title.bold())
-                    Spacer()
-                    Circle().fill(ble.statusBusy ? Color.orange : (store.battery != nil ? Color.green : Color.gray))
-                        .frame(width: 7, height: 7)
-                    Text(ble.status).font(.caption2).foregroundColor(.secondary)
-                        .lineLimit(2).multilineTextAlignment(.trailing)
-                }
-                .padding(.top, 2)
+                // Cabecera: solo el título
+                Text("Oclean").font(.title.bold())
+                    .padding(.top, 2)
 
-                // Cepillo: imagen + batería + cabezal (compacto)
+                // Cepillo: imagen + batería + cabezal + estado de sincronización
+                // (el punto y el texto viven dentro de esta tarjeta, petición de Adrián)
                 GlassCard {
                     HStack(spacing: 14) {
                         if let url = Bundle.main.url(forResource: "brush", withExtension: "png", subdirectory: "web/assets"),
@@ -42,6 +36,12 @@ struct HoyView: View {
                             HStack(spacing: 8) {
                                 Text("CABEZAL").font(.caption2.weight(.semibold)).foregroundColor(.secondary)
                                 Text(headText).font(.subheadline.weight(.medium))
+                            }
+                            HStack(alignment: .center, spacing: 6) {
+                                Circle().fill(ble.statusBusy ? Color.orange : (store.battery != nil ? Color.green : Color.gray))
+                                    .frame(width: 7, height: 7)
+                                Text(ble.status).font(.caption2).foregroundColor(.secondary)
+                                    .lineLimit(2).multilineTextAlignment(.leading)
                             }
                         }
                         Spacer(minLength: 0)

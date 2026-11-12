@@ -32,8 +32,9 @@ struct OcleanXApp: App {
                     ble.attach(store: store)
                     // Sincronización automática al abrir: si el cepillo ya se
                     // conectó alguna vez, reconecta por su identificador guardado
-                    // sin escanear; si no, lo busca.
-                    ble.sync()
+                    // sin escanear; si no, lo busca. Reintenta varias veces por
+                    // si el cepillo está dormido y tarda en despertar.
+                    ble.sync(auto: true)
                 }
         }
     }
