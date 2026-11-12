@@ -36,6 +36,7 @@ setInterval(async function(){
   if (busy || !window.__zq.length) return;
   busy = true;
   const cls = window.__zq[window.__zq.length - 1]; window.__zq.length = 0;
+  report(cls); // eco de RECEPCIÓN: confirma la tubería SwiftUI->JS sin esperar al GLB
   try {
     if (mounted && api && api.recolor) {
       api.recolor(cls); // recolorear en caliente: sin desmontar, sin perder gestos
