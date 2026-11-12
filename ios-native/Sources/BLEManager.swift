@@ -250,6 +250,24 @@ final class BLEManager: NSObject, ObservableObject {
             try? await write([0x03, 0x02, 0x01], to: send, on: p); try? await Task.sleep(nanoseconds: 150_000_000)
             try? await write([0x03, 0x07], to: send, on: p); try? await Task.sleep(nanoseconds: 150_000_000)
             dlog("cmds 0303/0302/0307 enviados -> fbb89")
+            /* Sondas de SOLO LECTURA (investigación modo/potencia 17:01): la
+               clase APK de su modelo (C3367n0) tiene queries "extended" cuyo
+               contenido no está documentado; si responden, el volcado crudo
+               aparece abajo en "notif fbb..". NO enviamos 0239/0240: esos son
+               interruptores (escritura), no consultas. */
+            for q in [[0x02,0x34],[0x02,0x35],[0x03,0xa0],[0x02,0x36],[0x02,0x37]] as [[UInt8]] {
+                try? await write(q, to: send, on: p)
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            }
+            dlog("sondas 0234/0235/03a0/0236/0237 enviadas -> fbb89")
+        }
+        // Las mismas sondas por fbb85: algunos modelos solo responden consultas ahí.
+        if let w = chars[C_WRITE] {
+            for q in [[0x02,0x34],[0x02,0x35],[0x03,0xa0],[0x02,0x36],[0x02,0x37]] as [[UInt8]] {
+                _ = await writeOK(q, to: w, on: p)
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            }
+            dlog("sondas enviadas -> fbb85")
         }
 
         // 4r) Si fbb90 no suscribió: reintento tras los comandos y re-lanzamos 0307
@@ -598,7 +616,11 @@ final class BLEManager: NSObject, ObservableObject {
         t1Active = false; t1Buf = []; t1Expected = 0
         let n = buf.count / 42
         for i in 0..<n {
-            if let rec = parseSessionRecord(Array(buf[i*42..<(i+1)*42])) {
+            let raw = Array(buf[i*42..<(i+1)*42])
+            if let rec = parseSessionRecord(raw) {
+                /* powerArray (bytes 30-32, 12 nibbles de 2 bits, 0-3): qué
+                   potencia usó realmente cada tramo de la sesión. Diagnóstico. */
+                if raw.count >= 33 { dlog("sesion \(i): powerArray bytes30-32 = \(hex(Array(raw[30...32])))") }
                 Task { @MainActor in _ = self.store?.mergeSession(rec) }
                 sessFetched += 1
                 signalSess()
