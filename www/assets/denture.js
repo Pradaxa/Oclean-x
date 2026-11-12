@@ -325,6 +325,21 @@ export async function mountLive(canvas, classes) {
   canvas.addEventListener('pointermove', move);
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
+  /* Rescate de pellizco en WKWebView: a veces WebKit enruta el gesto de dos
+     dedos a sus eventos gesture* en lugar de pointer events (p. ej. el
+     pellizco sintetizado por las pruebas de UI). Solo cuenta si el pellizco
+     por punteros no está activo, para no aplicar el zoom dos veces. */
+  let gScale = 1;
+  canvas.addEventListener('gesturestart', function (e) { e.preventDefault(); gScale = e.scale || 1; });
+  canvas.addEventListener('gesturechange', function (e) {
+    e.preventDefault();
+    if (!nativeShell || ptrs.size >= 2) { gScale = e.scale || 1; return; }
+    const s = e.scale || 1;
+    if (gScale > 0) tZoom = Math.max(0.5, Math.min(3, tZoom * s / gScale));
+    gScale = s;
+    if (!raf) raf = requestAnimationFrame(frame);
+  });
+  canvas.addEventListener('gestureend', function (e) { e.preventDefault(); gScale = 1; });
   renderer.render(scene, cam); // estático hasta que se toca
   const api = {
     dispose() { dead = true; cancelAnimationFrame(raf); lockScroll(false); liveByCanvas.delete(canvas); renderer.dispose(); },
