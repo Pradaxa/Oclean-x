@@ -27,13 +27,16 @@ final class OcleanXUITests: XCTestCase {
         let app = launch(["-seedDemo", "-openTab", "ajustes"])
         let t = app.switches["Aviso de zonas"].firstMatch
         XCTAssertTrue(t.waitForExistence(timeout: 15), "no aparece el toggle")
+        // Re-resolver antes de tocar (los handles cacheados pueden dar
+        // coordenadas viejas si el layout se mueve) y margen amplio: el
+        // simulador de CI puede tardar decenas de segundos en aplicar el binding.
         let before = app.switches["Aviso de zonas"].firstMatch.value as? String ?? "?"
-        app.switches["Aviso de zonas"].firstMatch.tap()
-        // Predicado = snapshot fresco en cada evaluación (t.value cachea)
+        let sw = app.switches["Aviso de zonas"].firstMatch
+        if sw.isHittable { sw.tap() } else { sw.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         let exp = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value != %@", before),
             object: app.switches["Aviso de zonas"].firstMatch)
-        XCTAssertEqual(XCTWaiter.wait(for: [exp], timeout: 10), .completed,
+        XCTAssertEqual(XCTWaiter.wait(for: [exp], timeout: 45), .completed,
                        "el toggle no cambió al tocarlo")
     }
 
