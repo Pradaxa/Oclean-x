@@ -205,6 +205,11 @@ final class BrushStore: ObservableObject {
 
     init() {
         load()
+        /* Pedido de Adrián (15:18): los cepillados de menos de 10 s no cuentan.
+           Purgamos los ya guardados una vez al cargar. */
+        let before = sessions.count
+        sessions.removeAll { ($0.dur ?? 10) < 10 }
+        if sessions.count != before { save() }
         // Datos de demostración solo para capturas del simulador (-seedDemo); no se guardan.
         if ProcessInfo.processInfo.arguments.contains("-seedDemo") {
             sessions = Self.samples()
@@ -231,6 +236,8 @@ final class BrushStore: ObservableObject {
 
     @discardableResult
     func mergeSession(_ s: BrushSession) -> Bool {
+        // Menos de 10 s no es un cepillado (pedido de Adrián 15:18): no se guarda.
+        if let d = s.dur, d < 10 { return false }
         if let i = sessions.firstIndex(where: { $0.ts == s.ts }) {
             var ex = sessions[i]; var changed = false
             if ex.pnum == nil, s.pnum != nil { ex.pnum = s.pnum; changed = true }
