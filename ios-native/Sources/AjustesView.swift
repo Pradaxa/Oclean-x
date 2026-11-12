@@ -62,9 +62,10 @@ struct AjustesView: View {
                                     Spacer()
                                     Text("\(store.ajPower)").foregroundColor(.secondary).font(.subheadline.weight(.semibold))
                                 }
+                                // 1-32 en Limpiar, 1-4 en Blanquear/Masajear (como el cepillo)
                                 Slider(value: Binding(
                                     get: { Double(store.ajPower) },
-                                    set: { store.setAjustes(power: Int($0)) }), in: 1...32, step: 1)
+                                    set: { store.setAjustes(power: Int($0)) }), in: 1...Double(maxPower(for: store.ajMode)), step: 1)
                                     .tint(Theme.accent)
                             }
 

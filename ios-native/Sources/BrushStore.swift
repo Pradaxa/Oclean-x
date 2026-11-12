@@ -27,16 +27,16 @@ struct PendingSettings: Codable {
     }
 }
 
-/* Gear compuesto a partir de modo + potencia (1-32), igual que el menú del
-   cepillo. HECHO (API oficial): gears 1-32 = limpieza, 33-36 = blanqueado 1-4,
-   37-40 = masaje 1-4. SUPOSICIÓN: cómo se reparte la potencia 1-32 sobre los 4
-   gears de blanqueado/masaje (por cuartiles); en limpieza va directa. */
+/* Gear compuesto a partir de modo + potencia. HECHO (API oficial + confirmado
+   por Adrián en su cepillo 13:08): limpiar tiene potencia 1-32 (gear =
+   potencia), blanquear y masajear tienen potencia 1-4 (gears 33-36 y 37-40). */
+func maxPower(for mode: Int) -> Int { mode == 0 ? 32 : 4 }
+
 func composedGear(mode: Int, power: Int) -> Int {
-    let p = max(1, min(32, power))
     switch mode {
-    case 1: return 33 + (p - 1) / 8  // blanquear -> 33-36
-    case 2: return 37 + (p - 1) / 8  // masajear -> 37-40
-    default: return p                // limpiar  -> 1-32
+    case 1: return 32 + max(1, min(4, power))  // blanquear -> 33-36
+    case 2: return 36 + max(1, min(4, power))  // masajear  -> 37-40
+    default: return max(1, min(32, power))     // limpiar   -> 1-32
     }
 }
 
@@ -149,16 +149,25 @@ final class BrushStore: ObservableObject {
     @Published var lastSync: Double? = nil
 
     /* Opciones de cepillado (las 4 del menú del cepillo, petición de Adrián):
-       modo 0=limpiar/1=blanquear/2=masajear, potencia 1-32, duración en
-       segundos. La app no puede leer del cepillo la potencia ni el modo actual
-       (el 0302 solo confirma pnum), así que muestra lo elegido aquí. */
+       modo 0=limpiar/1=blanquear/2=masajear, potencia 1-32 en limpiar y 1-4 en
+       blanquear/masajear (confirmado en su cepillo), duración en segundos. La
+       app no puede leer del cepillo la potencia ni el modo actual (el 0302
+       solo confirma pnum), así que muestra lo elegido aquí. */
     @Published var ajMode: Int = 0
     @Published var ajPower: Int = 16
     @Published var ajDuration: Int = 120
 
     func setAjustes(mode: Int? = nil, power: Int? = nil, duration: Int? = nil) {
-        if let mode { ajMode = mode }
-        if let power { ajPower = max(1, min(32, power)) }
+        if let mode, mode != ajMode {
+            /* La escala de potencia cambia con el modo: al saltar entre 1-32 y
+               1-4 se remapea en proporción para no perder la intensidad. */
+            let oldMax = maxPower(for: ajMode), newMax = maxPower(for: mode)
+            if oldMax == 32 && newMax == 4 { ajPower = (ajPower - 1) / 8 + 1 }
+            else if oldMax == 4 && newMax == 32 { ajPower = ajPower * 8 }
+            ajMode = mode
+        }
+        if let power { ajPower = power }
+        ajPower = max(1, min(maxPower(for: ajMode), ajPower))
         if let duration { ajDuration = duration }
         pending.customGear = composedGear(mode: ajMode, power: ajPower)
         pending.customSeconds = ajDuration
