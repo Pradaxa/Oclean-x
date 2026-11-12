@@ -10,6 +10,10 @@ on:
         description: Publicar release nativa (no toca la fuente AltStore de la Capacitor)
         type: boolean
         default: false
+      version:
+        description: Versión de marketing para la release (vacío = 0.2.<run_number>)
+        type: string
+        required: false
 
 permissions:
   contents: write
@@ -93,6 +97,9 @@ jobs:
 
       - name: Build IPA (unsigned)
         run: |
+          VERSION="${{ inputs.version }}"
+          [ -z "$VERSION" ] && VERSION="0.2.${{ github.run_number }}"
+          echo "MARKETING_VERSION=$VERSION"
           cd ios-native
           xcodebuild \
             -project OcleanXNative.xcodeproj \
@@ -101,7 +108,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            MARKETING_VERSION="0.2.${{ github.run_number }}" \
+            MARKETING_VERSION="$VERSION" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             build
 
@@ -123,7 +130,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="native-v0.2.${{ github.run_number }}"
+          VERSION="${{ inputs.version }}"
+          [ -z "$VERSION" ] && VERSION="0.2.${{ github.run_number }}"
+          TAG="native-v$VERSION"
           gh release create "$TAG" OcleanX-native.ipa \
             --title "Oclean X nativa $TAG (alpha)" \
             --notes "Reescritura nativa SwiftUI · build ${{ github.run_number }}"
