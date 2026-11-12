@@ -45,10 +45,12 @@ final class OcleanXUITests: XCTestCase {
         // snapshot fresco) o releer la consulta entera cada vez.
         func fresh() -> String { app.staticTexts["rot-state"].firstMatch.label }
         // Las clases con zonas malas tienen que haber llegado al JS (eco por fetch/postMessage)
+        // Margen amplio: en el simulador el GLB tarda decenas de segundos en
+        // montar por SwiftShader; el eco de clases reales llega tras ese montaje.
         let badExp = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "label CONTAINS %@", "bad"),
             object: app.staticTexts["rot-state"].firstMatch)
-        XCTAssertEqual(XCTWaiter.wait(for: [badExp], timeout: 30), .completed,
+        XCTAssertEqual(XCTWaiter.wait(for: [badExp], timeout: 120), .completed,
                        "las clases reales no llegaron al render. rot-state: \(fresh())")
         let v0 = fresh()
         app.webViews.firstMatch.swipeRight()
