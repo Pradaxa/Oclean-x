@@ -10,6 +10,8 @@ final class LocalSchemeHandler: NSObject, WKURLSchemeHandler {
     // en paginas servidas por esquema propio; un fetch a app://local/__zones/...
     // siempre llega aqui.
     var onZones: ((String) -> Void)?
+    var onRot: ((String) -> Void)?   // "rotY/rotX/zoom" mientras se gira
+    var onLock: ((String) -> Void)?  // "1"/"0": bloquear el scroll durante el arrastre
     init(root: URL) { self.root = root }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
@@ -22,6 +24,26 @@ final class LocalSchemeHandler: NSObject, WKURLSchemeHandler {
             let cls = String(path.dropFirst("__zones/".count))
             let cb = onZones
             DispatchQueue.main.async { cb?(cls) }
+            let resp = URLResponse(url: url, mimeType: "text/plain", expectedContentLength: 0, textEncodingName: nil)
+            task.didReceive(resp)
+            task.didReceive(Data())
+            task.didFinish()
+            return
+        }
+        if path.hasPrefix("__rot/") {
+            let s = String(path.dropFirst("__rot/".count))
+            let cb = onRot
+            DispatchQueue.main.async { cb?(s) }
+            let resp = URLResponse(url: url, mimeType: "text/plain", expectedContentLength: 0, textEncodingName: nil)
+            task.didReceive(resp)
+            task.didReceive(Data())
+            task.didFinish()
+            return
+        }
+        if path.hasPrefix("__lock/") {
+            let s = String(path.dropFirst("__lock/".count))
+            let cb = onLock
+            DispatchQueue.main.async { cb?(s) }
             let resp = URLResponse(url: url, mimeType: "text/plain", expectedContentLength: 0, textEncodingName: nil)
             task.didReceive(resp)
             task.didReceive(Data())
@@ -52,57 +74,44 @@ final class LocalSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
-/* Control nativo del render: los gestos (arrastrar, pellizcar, doble toque) se
-   capturan en SwiftUI y se mandan al JS, que es quien dibuja. Los pointer events
-   del WKWebView se desactivan (disablePointerDrag) para no rotar dos veces.
-   El estado se expone en accessibilityValue para las pruebas de UI. */
+/* Estado del render 3D. Los gestos (arrastrar, pellizcar, doble toque) los
+   procesa el propio JS con pointer events, como en la web: conducirlos desde
+   SwiftUI con evaluateJavaScript por frame hacia que el render fuera a golpes
+   en el iPhone real. El JS reporta aqui su estado por el canal fetch
+   (__rot/__lock) para las pruebas de UI y para bloquear el scroll. */
 final class DentureController: ObservableObject {
     weak var webView: WKWebView?
     @Published private(set) var a11y = "rotY 0.00 rotX 0.00 zoom 1.00"
     @Published var zonesState = "?" // clases con las que el JS montó el render por última vez
-    private var rotY: Double = 0
-    private var rotX: Double = 0
-    private var zoom: Double = 1
 
-    private func updateA11y() {
-        a11y = String(format: "rotY %.2f rotX %.2f zoom %.2f", rotY, rotX, zoom)
+    func resetA11y() {
+        a11y = "rotY 0.00 rotX 0.00 zoom 1.00"
         webView?.accessibilityValue = a11y
     }
 
-    func resetA11y() {
-        rotY = 0; rotX = 0; zoom = 1
-        updateA11y()
+    // "rotY/rotX/zoom" ya formateado por el JS con 2 decimales
+    func reportRot(_ s: String) {
+        let p = s.split(separator: "/")
+        guard p.count == 3 else { return }
+        a11y = "rotY \(p[0]) rotX \(p[1]) zoom \(p[2])"
+        webView?.accessibilityValue = a11y
     }
+}
 
-    func dragBy(dx: Double, dy: Double) {
-        rotY += dx * 0.011
-        rotX = max(-0.85, min(0.85, rotX + dy * 0.007))
-        webView?.evaluateJavaScript("window.dragRot && window.dragRot(\(dx),\(dy));", completionHandler: nil)
-        updateA11y()
-    }
-
-    func pinchBy(_ factor: Double) {
-        zoom = max(0.5, min(3, zoom * factor))
-        webView?.evaluateJavaScript("window.pinchZoom && window.pinchZoom(\(factor));", completionHandler: nil)
-        updateA11y()
-    }
-
-    func resetView() {
-        resetA11y()
-        webView?.evaluateJavaScript("window.resetRot && window.resetRot();", completionHandler: nil)
-    }
+/* Bloqueo del ScrollView de Hoy mientras se arrastra el 3D. */
+final class ScrollLock: ObservableObject {
+    @Published var locked = false
 }
 
 struct DentureView: View {
     var classes: [ZoneClass]?
+    var scrollLock: ScrollLock? = nil
     // @StateObject para que el controller sobreviva a las recomputaciones de la vista
     @StateObject private var controller = DentureController()
-    @State private var lastDrag: CGSize = .zero
-    @State private var lastPinch: CGFloat = 1
 
     var body: some View {
         ZStack {
-            DentureWebView(classes: classes, controller: controller)
+            DentureWebView(classes: classes, controller: controller, scrollLock: scrollLock)
             // Estado del gesto visible solo para las pruebas de UI (1px, transparente)
             Text(controller.a11y + " z=" + controller.zonesState)
                 .font(.system(size: 1))
@@ -111,33 +120,13 @@ struct DentureView: View {
                 .accessibilityIdentifier("rot-state")
         }
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { v in
-                        let dx = v.translation.width - lastDrag.width
-                        let dy = v.translation.height - lastDrag.height
-                        lastDrag = v.translation
-                        if dx != 0 || dy != 0 { controller.dragBy(dx: dx, dy: dy) }
-                    }
-                    .onEnded { _ in lastDrag = .zero }
-                    .simultaneously(with:
-                        MagnificationGesture()
-                            .onChanged { m in
-                                let f = m / lastPinch
-                                lastPinch = m
-                                if f != 1 { controller.pinchBy(Double(f)) }
-                            }
-                            .onEnded { _ in lastPinch = 1 }
-                    )
-            )
-            // Doble toque: volver a la posición inicial (como el doble clic de la web)
-            .simultaneousGesture(TapGesture(count: 2).onEnded { controller.resetView() })
     }
 }
 
 private struct DentureWebView: UIViewRepresentable {
     var classes: [ZoneClass]?
     let controller: DentureController
+    var scrollLock: ScrollLock? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -147,6 +136,12 @@ private struct DentureWebView: UIViewRepresentable {
         let handler = LocalSchemeHandler(root: root)
         handler.onZones = { [weak controller] s in
             controller?.zonesState = s
+        }
+        handler.onRot = { [weak controller] s in
+            controller?.reportRot(s)
+        }
+        handler.onLock = { [weak scrollLock] s in
+            scrollLock?.locked = (s == "1")
         }
         config.setURLSchemeHandler(handler, forURLScheme: "app")
         config.userContentController.add(context.coordinator, name: "zones")

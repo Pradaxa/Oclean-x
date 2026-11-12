@@ -20,10 +20,19 @@ const cv = document.getElementById('c');
 const diag = document.getElementById('diag');
 const DIAG = new URLSearchParams(location.search).has('diag');
 let mounted = false, api = null, busy = false;
-/* Los gestos los conduce SwiftUI por evaluateJavaScript */
-window.dragRot = function(dx, dy){ if (api && api.rot) api.rot(dx, dy); };
-window.pinchZoom = function(f){ if (api && api.zoomBy) api.zoomBy(f); };
-window.resetRot = function(){ if (api && api.resetRot) api.resetRot(); };
+/* Los gestos los procesa el propio JS (pointer events), como en la web:
+   conducirlos desde SwiftUI por evaluateJavaScript iba a golpes en el iPhone.
+   El JS reporta su estado de rotación por el canal fetch para las pruebas,
+   y bloquea el scroll de la pantalla mientras dura un arrastre. */
+function wireApi(a){
+  if (!a) return;
+  if (a.setRotReporter) a.setRotReporter(function(y, x, z){
+    try { fetch('./__rot/' + y.toFixed(2) + '/' + x.toFixed(2) + '/' + z.toFixed(2)).catch(function(){}); } catch(e) {}
+  });
+  if (a.setScrollLocker) a.setScrollLocker(function(on){
+    try { fetch('./__lock/' + (on ? '1' : '0')).catch(function(){}); } catch(e) {}
+  });
+}
 function report(cls){
   if (DIAG) { try { diag.textContent = 'z:' + cls.join(',') + ' wk:' + ((window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.zones) ? 'si' : 'no'); } catch(e) {} }
   try { fetch('./__zones/' + cls.join('-')).catch(function(){}); } catch(e) {}
@@ -42,7 +51,7 @@ setInterval(async function(){
       api.recolor(cls); // recolorear en caliente: sin desmontar, sin perder gestos
     } else {
       api = await D.mountLive(cv, cls);
-      if (api && api.disablePointerDrag) api.disablePointerDrag();
+      wireApi(api);
       mounted = true;
     }
     report(cls);

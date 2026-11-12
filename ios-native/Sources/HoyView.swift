@@ -4,15 +4,24 @@ struct HoyView: View {
     @EnvironmentObject var store: BrushStore
     @EnvironmentObject var ble: BLEManager
     @State private var selected: BrushSession? = nil
+    @StateObject private var scrollLock = ScrollLock()
 
     private var todaySessions: [BrushSession] { store.sessionsOn(Date()) }
     private var shown: BrushSession? { selected ?? todaySessions.first }
 
-    /* Pantalla Hoy SIN scroll vertical (petición de Adrián): todo visible de un
-       vistazo. El 3D es la pieza flexible: absorbe el alto que sobre. */
+    /* Pantalla Hoy con scroll vertical y rebote (petición de Adrián 04:37), pero
+       con el contenido dimensionado para verse entero de un vistazo en su iPhone:
+       el scroll es por sensación (rebote) y por si hay secciones extra, no para
+       llegar al contenido. Mientras se arrastra el 3D, el scroll se bloquea
+       (ScrollLock) para que el dedo gire la dentadura y no mueva la pantalla. */
     var body: some View {
         ZStack {
             Theme.bgGradient.ignoresSafeArea()
+            GeometryReader { geo in
+                // Alto de la tarjeta del 3D: lo que queda tras las piezas fijas,
+                // con un mínimo razonable (si no cabe, para eso está el scroll).
+                let detailH = max(280, geo.size.height - 420)
+                ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 // Cabecera: solo el título
                 Text("Oclean").font(.title.bold())
@@ -142,7 +151,7 @@ struct HoyView: View {
                                     Spacer()
                                 }
                                 if let zc = zoneClasses(s) {
-                                    DentureView(classes: zc)
+                                    DentureView(classes: zc, scrollLock: scrollLock)
                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                                         .cornerRadius(14)
                                 } else {
@@ -151,16 +160,19 @@ struct HoyView: View {
                                 }
                             }
                         }
-                        .frame(maxHeight: .infinity)
+                        .frame(height: detailH)
                     }
                 } else if store.lastSync != nil && store.lastSess == 0 {
-                    emptyCard("No había sesiones nuevas en el cepillo.\nEs normal: si la app oficial de Oclean se conectó antes, descargó el historial ella.\nCepíllate y sincroniza de nuevo aquí.")
+                    emptyCard("No había sesiones nuevas en el cepillo.\nEs normal: si la app oficial de Oclean se conectó antes, descargó el historial ella.\nCepíllate y sincroniza de nuevo aquí.", height: detailH)
                 } else {
-                    emptyCard("Aún no hay cepillados hoy.\nConecta el cepillo para descargar tu historial.")
+                    emptyCard("Aún no hay cepillados hoy.\nConecta el cepillo para descargar tu historial.", height: detailH)
                 }
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 96) // hueco de la tab bar flotante
+                }
+                .scrollDisablediOS15(scrollLock.locked)
+            }
         }
         .onAppear {
             // Solo capturas del simulador: mostrar una sesión con zonas mal cepilladas.
@@ -180,7 +192,7 @@ struct HoyView: View {
         return "—"
     }
 
-    private func emptyCard(_ text: String) -> some View {
+    private func emptyCard(_ text: String, height: CGFloat) -> some View {
         GlassCard {
             VStack(spacing: 8) {
                 Text("🦷").font(.title)
@@ -188,7 +200,19 @@ struct HoyView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxHeight: .infinity)
+        .frame(height: height)
+    }
+}
+
+extension View {
+    /* .scrollDisabled es iOS 16+: en iOS 15 se queda sin bloqueo (el arrastre
+       del 3D puede scrollear un poco, pero el giro funciona igual). */
+    @ViewBuilder func scrollDisablediOS15(_ disabled: Bool) -> some View {
+        if #available(iOS 16.0, *) {
+            self.scrollDisabled(disabled)
+        } else {
+            self
+        }
     }
 }
 

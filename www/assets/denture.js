@@ -231,9 +231,22 @@ export async function mountLive(canvas, classes) {
   cam.lookAt(0, 0, 0);
 
   let rotY = 0, rotX = 0, tRotY = 0, tRotX = 0;
-  let zoom = 1, tZoom = 1; // zoom por pellizco (la app nativa lo conduce; en la web queda en 1)
+  let zoom = 1, tZoom = 1; // zoom por pellizco (solo app nativa; en la web queda en 1)
   let dragging = false, px = 0, py = 0, raf = 0, dead = false;
-  let nativeDrag = false; // true en la app nativa: los gestos llegan por api.rot/zoomBy, no por pointer events
+  let nativeDrag = false; // obsoleto: la app nativa tambien usa pointer events (ver abajo)
+  /* Gestos EN PROCESO: conducirlos desde SwiftUI con evaluateJavaScript por
+     frame hacia que el render fuera a golpes en el iPhone real (las llamadas
+     llegan en ráfagas). Aqui los pointer events alimentan directamente el
+     bucle rAF, igual que en la web. La app nativa ademas tiene pellizco y
+     doble toque, y reporta su estado a Swift por onRotState. */
+  const ptrs = new Map(); // pointerId -> [x, y]
+  let pinchD = 0, movedPx = 0, lastTap = 0;
+  let rotReporter = null, lastRotReport = 0;
+  /* Bloqueo del scroll de la pantalla mientras se gira el 3D (app nativa):
+     la vista avisa a Swift por este hook para que el ScrollView no compita
+     con el arrastre. En la web nadie lo registra y no se llama. */
+  let scrollLocker = null;
+  function lockScroll(on) { if (scrollLocker) try { scrollLocker(on); } catch (e) {} }
   function frame() {
     if (dead) return;
     rotY += (tRotY - rotY) * 0.16;
@@ -244,32 +257,68 @@ export async function mountLive(canvas, classes) {
     cam.position.set(0, -0.6, dist / zoom);
     cam.lookAt(0, 0, 0);
     renderer.render(scene, cam);
+    if (rotReporter) {
+      const now = performance.now();
+      if (now - lastRotReport > 120) { lastRotReport = now; try { rotReporter(rotY, rotX, zoom); } catch (e) {} }
+    }
     if (dragging || Math.abs(tRotY - rotY) > 0.0004 || Math.abs(tRotX - rotX) > 0.0004 || Math.abs(tZoom - zoom) > 0.001) raf = requestAnimationFrame(frame);
     else raf = 0;
   }
-  function rot(dx, dy) { // arrastre conducido por gestos nativos
+  function rot(dx, dy) { // entrada externa opcional (misma escala que el arrastre)
     tRotY += dx * 0.011;
     tRotX = Math.max(-0.85, Math.min(0.85, tRotX + dy * 0.007));
     if (!raf) raf = requestAnimationFrame(frame);
   }
-  function zoomBy(f) { // pellizco conducido por gestos nativos
+  function zoomBy(f) { // entrada externa opcional
     tZoom = Math.max(0.5, Math.min(3, tZoom * f));
     if (!raf) raf = requestAnimationFrame(frame);
   }
   function down(e) {
     if (nativeDrag) return;
-    dragging = true; px = e.clientX; py = e.clientY;
+    if (ptrs.size === 0) lockScroll(true);
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (nativeShell && ptrs.size === 2) {
+      const p = [...ptrs.values()];
+      pinchD = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
+      dragging = false;
+    } else {
+      dragging = true; px = e.clientX; py = e.clientY; movedPx = 0;
+    }
     if (canvas.setPointerCapture) try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
     if (!raf) raf = requestAnimationFrame(frame);
   }
   function move(e) {
-    if (nativeDrag || !dragging) return;
+    if (nativeDrag || !ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     if (e.cancelable) e.preventDefault();
+    if (nativeShell && ptrs.size === 2) { // pellizco: zoom por distancia entre dedos
+      const p = [...ptrs.values()];
+      const d = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
+      if (pinchD > 0 && d > 0) tZoom = Math.max(0.5, Math.min(3, tZoom * d / pinchD));
+      pinchD = d;
+      return;
+    }
+    if (!dragging) return;
+    movedPx += Math.abs(e.clientX - px) + Math.abs(e.clientY - py);
     tRotY += (e.clientX - px) * 0.011;
     tRotX = Math.max(-0.85, Math.min(0.85, tRotX + (e.clientY - py) * 0.007));
     px = e.clientX; py = e.clientY;
   }
-  function up() { dragging = false; }
+  function up(e) {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size === 0) lockScroll(false);
+    if (ptrs.size < 2) pinchD = 0;
+    if (ptrs.size === 1) { const p = [...ptrs.values()][0]; px = p[0]; py = p[1]; movedPx = 0; dragging = true; }
+    if (ptrs.size === 0) {
+      const wasTap = movedPx < 12;
+      dragging = false;
+      // doble toque -> posicion inicial (la web usa dblclick, que en iOS no es fiable)
+      if (nativeShell && wasTap) {
+        const n = performance.now();
+        if (n - lastTap < 320) { reset(); lastTap = 0; } else lastTap = n;
+      }
+    }
+  }
   function reset() { tRotY = 0; tRotX = 0; tZoom = 1; if (!raf) raf = requestAnimationFrame(frame); } // posición 0
   canvas.addEventListener('dblclick', reset);
   canvas.addEventListener('pointerdown', down);
@@ -278,9 +327,11 @@ export async function mountLive(canvas, classes) {
   canvas.addEventListener('pointercancel', up);
   renderer.render(scene, cam); // estático hasta que se toca
   const api = {
-    dispose() { dead = true; cancelAnimationFrame(raf); liveByCanvas.delete(canvas); renderer.dispose(); },
+    dispose() { dead = true; cancelAnimationFrame(raf); lockScroll(false); liveByCanvas.delete(canvas); renderer.dispose(); },
     rot, zoomBy, resetRot: reset,
     disablePointerDrag() { nativeDrag = true; },
+    setRotReporter(fn) { rotReporter = fn; },
+    setScrollLocker(fn) { scrollLocker = fn; },
     // Recolorear EN CALIENTE sin desmontar: mismo render, mismas luces.
     // En la app nativa remontar (dispose + nuevo renderer sobre el mismo canvas)
     // es frágil en WKWebView; recolorear la instancia viva no falla nunca.
