@@ -78,12 +78,19 @@ func schemeName(_ pnum: Int?) -> String {
    guarda su modo del menú; tras sincronizar, el cepillo debería mostrar el
    modo elegido y el 0302 confirmar pnum 0. */
 func buildCustomPackets(gear: Int, totalSeconds: Int) -> [[UInt8]] {
-    let steps = max(1, min(8, totalSeconds / 30))
+    /* Máximo 4 tramos: con 4 el paquete mide 18 bytes y cabe en UNA escritura
+       BLE (MTU 23). Con 5-6 tramos (2:30/3:00 a 30s) salía partido en dos
+       escrituras (0206 + continuación 020B) y en el OCLEANY3 de Adrián la sync
+       partida dejó la pantalla con valores absurdos (duración 6'13"). Tramos
+       de duración variable están respaldados por los esquemas oficiales del
+       APK (pnum 85 lleva un tramo de 20s; pnum 88 son todos de 20s). */
+    let steps = totalSeconds <= 120 ? max(1, totalSeconds / 30) : 4
+    let base = totalSeconds / steps, extra = totalSeconds % steps
     var pl: [UInt8] = [0x02, 0x06, 0x00, UInt8(steps)]
-    for _ in 0..<steps {
+    for i in 0..<steps {
         pl.append(UInt8(GEAR_ENC[gear] ?? 0))
         pl.append(UInt8(gear & 0xff))
-        pl.append(30)
+        pl.append(UInt8(base + (i < extra ? 1 : 0)))
     }
     pl.append(0x00); pl.append(0x05)
     if pl.count > 20 {
