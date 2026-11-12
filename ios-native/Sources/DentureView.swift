@@ -215,14 +215,16 @@ private struct DentureWebView: UIViewRepresentable {
         }
 
         /* evaluateJavaScript devuelve 0 si window.setZones aún no existe (la
-           página no ha parseado el script clásico): reintenta hasta 20 veces.
-           Así apply() no depende de didFinish ni de la carga del GLB. */
+           página no ha parseado el script clásico) o falla mientras la página
+           carga: reintenta durante 2 minutos. Con 20 intentos (10s) se agotaba
+           antes de tiempo cuando el simulador de CI va lento y las clases
+           reales no llegaban nunca. */
         private func send(_ arr: String, attempt: Int) {
             guard let wv = webView else { return }
             wv.evaluateJavaScript("window.setZones ? (window.setZones([\(arr)]), 1) : 0") { [weak self] res, _ in
                 guard let self else { return }
                 if let n = res as? Int, n == 1 { return }
-                if attempt < 20 {
+                if attempt < 240 {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.send(arr, attempt: attempt + 1) }
                 }
             }
