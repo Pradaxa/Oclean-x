@@ -298,7 +298,10 @@ struct SystemConfirmPopover: UIViewControllerRepresentable {
             // Mismo rojo que tenía la burbuja de 0.3.49 (el tint rojo de la
             // app): al presentarla desde UIKit hay que ponérselo a mano.
             alert.view.tintColor = UIColor(Theme.accent)
-            alert.addAction(UIAlertAction(title: confirmTitle, style: .default) { _ in
+            // .destructive para el texto rojo: en iOS 26 el actionSheet en
+            // popover no hereda el tint en las acciones (probado: salía
+            // blanco), y destructive da exactamente el rojo de 0.3.49.
+            alert.addAction(UIAlertAction(title: confirmTitle, style: .destructive) { _ in
                 onConfirm()
                 isPresented = false
             })
