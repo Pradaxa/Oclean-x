@@ -290,6 +290,9 @@ struct SystemConfirmPopover: UIViewControllerRepresentable {
                 return
             }
             let alert = UIAlertController(title: message, message: nil, preferredStyle: .actionSheet)
+            // Mismo rojo que tenía la burbuja de 0.3.49 (el tint rojo de la
+            // app): al presentarla desde UIKit hay que ponérselo a mano.
+            alert.view.tintColor = UIColor(Theme.accent)
             alert.addAction(UIAlertAction(title: confirmTitle, style: .default) { _ in
                 onConfirm()
                 isPresented = false
