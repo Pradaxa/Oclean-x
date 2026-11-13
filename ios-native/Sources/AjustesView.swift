@@ -94,17 +94,15 @@ struct AjustesView: View {
                                     Text(headLabel).font(.caption).foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                // Burbuja del sistema (la de 0.3.49 que le
-                                // gustaba, pedido de Adrian 11:08, 13-nov),
-                                // pero colgada DEL BOTON para que iOS la
-                                // ancle a el: la flecha de arriba apunta a
-                                // "Cambiar" y la burbuja sale justo debajo.
+                                // Burbuja del sistema (idéntica a la de
+                                // 0.3.49 que le gusta, pedido de Adrian
+                                // 11:08, 13-nov) presentada por UIKit para
+                                // controlar la flecha: anclada al botón con
+                                // permittedArrowDirections = .up, así sale
+                                // JUSTO DEBAJO con la flecha apuntándole.
                                 Button("Cambiar") { showHeadConfirm = true }
                                     .glassGhostButton()
-                                    .confirmationDialog("¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días.", isPresented: $showHeadConfirm, titleVisibility: .visible) {
-                                        Button("Cambiar cabezal") { store.changeHeadNow() }
-                                        Button("Cancelar", role: .cancel) {}
-                                    }
+                                    .background(PopoverAnchorView(anchor: .headButton))
                             }
                         }
                     }
@@ -197,6 +195,11 @@ struct AjustesView: View {
         .sheet(isPresented: $showShare) {
             if let u = shareURL { ShareSheet(url: u) }
         }
+        .background(SystemConfirmPopover(
+            isPresented: $showHeadConfirm,
+            message: "¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días.",
+            confirmTitle: "Cambiar cabezal",
+            onConfirm: { store.changeHeadNow() }))
         .onAppear {
             // Para la captura de CI: abre la confirmación del cabezal.
             if ProcessInfo.processInfo.arguments.contains("-showHeadConfirm") { showHeadConfirm = true }
@@ -243,4 +246,79 @@ struct ShareSheet: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)
     }
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}
+
+/* Ancla invisible detrás del botón "Cambiar": UIKit la usa como sourceView
+   del popover para que la flecha apunte exactamente al botón. */
+final class PopoverAnchor {
+    static let headButton = PopoverAnchor()
+    weak var view: UIView?
+}
+
+struct PopoverAnchorView: UIViewRepresentable {
+    let anchor: PopoverAnchor
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        v.isUserInteractionEnabled = false
+        DispatchQueue.main.async { anchor.view = v }
+        return v
+    }
+    func updateUIView(_ uiView: UIView, context: Context) { anchor.view = uiView }
+}
+
+/* La burbuja del sistema (UIAlertController actionSheet en modo popover):
+   el mismo diálogo Liquid Glass que mostraba confirmationDialog, pero con
+   la flecha forzada hacia arriba apuntando al botón que la abre. */
+struct SystemConfirmPopover: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let message: String
+    let confirmTitle: String
+    let onConfirm: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIViewController(context: Context) -> UIViewController { UIViewController() }
+
+    func updateUIViewController(_ vc: UIViewController, context: Context) {
+        if isPresented {
+            guard vc.presentedViewController == nil else { return }
+            guard vc.view.window != nil, let anchor = PopoverAnchor.headButton.view else {
+                // La vista aún no está en pantalla: reintenta en un momento.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak vc] in
+                    if let vc = vc { updateUIViewController(vc, context: context) }
+                }
+                return
+            }
+            let alert = UIAlertController(title: message, message: nil, preferredStyle: .actionSheet)
+            alert.addAction(UIAlertAction(title: confirmTitle, style: .default) { _ in
+                onConfirm()
+                isPresented = false
+            })
+            alert.addAction(UIAlertAction(title: "Cancelar", style: .cancel) { _ in
+                isPresented = false
+            })
+            if let pop = alert.popoverPresentationController {
+                pop.sourceView = anchor
+                pop.sourceRect = anchor.bounds
+                pop.permittedArrowDirections = .up
+                pop.delegate = context.coordinator
+            }
+            context.coordinator.alert = alert
+            vc.present(alert, animated: true)
+        } else if let alert = context.coordinator.alert {
+            alert.dismiss(animated: true)
+            context.coordinator.alert = nil
+        }
+    }
+
+    final class Coordinator: NSObject, UIPopoverPresentationControllerDelegate {
+        var parent: SystemConfirmPopover
+        weak var alert: UIAlertController?
+        init(_ parent: SystemConfirmPopover) { self.parent = parent }
+        // Tocar fuera cierra la burbuja: sincroniza el estado.
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            alert = nil
+            parent.isPresented = false
+        }
+    }
 }
