@@ -277,7 +277,12 @@ struct SystemConfirmPopover: UIViewControllerRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func makeUIViewController(context: Context) -> UIViewController { UIViewController() }
+    func makeUIViewController(context: Context) -> UIViewController {
+        let vc = UIViewController()
+        // El diálogo hereda el tint del presentador: así sale rojo app.
+        vc.view.tintColor = UIColor(Theme.accent)
+        return vc
+    }
 
     func updateUIViewController(_ vc: UIViewController, context: Context) {
         if isPresented {
@@ -307,7 +312,11 @@ struct SystemConfirmPopover: UIViewControllerRepresentable {
                 pop.delegate = context.coordinator
             }
             context.coordinator.alert = alert
-            vc.present(alert, animated: true)
+            vc.present(alert, animated: true) {
+                // En iOS 26 el tint hay que reafirmarlo tras presentar.
+                alert.view.tintColor = UIColor(Theme.accent)
+                alert.view.window?.tintColor = UIColor(Theme.accent)
+            }
         } else if let alert = context.coordinator.alert {
             alert.dismiss(animated: true)
             context.coordinator.alert = nil
