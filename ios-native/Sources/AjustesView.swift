@@ -12,7 +12,6 @@ struct AjustesView: View {
     @State private var notice: String? = nil
     @State private var copied = false
     @State private var showHeadConfirm = false
-    @State private var cambiarBtnFrame: CGRect = .zero
 
     var body: some View {
         ZStack {
@@ -95,69 +94,18 @@ struct AjustesView: View {
                                     Text(headLabel).font(.caption).foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                Button("Cambiar") {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) { showHeadConfirm.toggle() }
-                                }
+                                // Burbuja del sistema (la de 0.3.49 que le
+                                // gustaba, pedido de Adrian 11:08, 13-nov),
+                                // pero colgada DEL BOTON para que iOS la
+                                // ancle a el: la flecha de arriba apunta a
+                                // "Cambiar" y la burbuja sale justo debajo.
+                                Button("Cambiar") { showHeadConfirm = true }
                                     .glassGhostButton()
-                                    .background(
-                                        GeometryReader { geo in
-                                            Color.clear.preference(key: HeadButtonFrameKey.self,
-                                                                   value: geo.frame(in: .named("headConfirmSpace")))
-                                        }
-                                    )
-                            }
-                            // Burbuja de confirmación (pedido de Adrián 10:38,
-                            // 13-nov): popover estilo Jelly justo DEBAJO del
-                            // botón Cambiar, con la flecha de arriba apuntando
-                            // al centro del botón. Blur real (ultraThinMaterial),
-                            // esquinas redondeadas y animación de resorte.
-                            if showHeadConfirm {
-                                let arrowX = max(14, cambiarBtnFrame.midX - 9)
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Triangle()
-                                        .fill(.ultraThinMaterial)
-                                        .frame(width: 18, height: 9)
-                                        .padding(.leading, arrowX)
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días.")
-                                            .font(.footnote).foregroundColor(.secondary)
-                                        HStack(spacing: 10) {
-                                            Button("Cambiar cabezal") {
-                                                store.changeHeadNow()
-                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) { showHeadConfirm = false }
-                                            }
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 14).padding(.vertical, 8)
-                                            .background(Capsule().fill(Theme.accent))
-                                            .accessibilityIdentifier("head-confirm-change")
-                                            Button("Cancelar") {
-                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) { showHeadConfirm = false }
-                                            }
-                                                .font(.subheadline)
-                                                .foregroundColor(.secondary)
-                                        }
+                                    .confirmationDialog("¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días.", isPresented: $showHeadConfirm, titleVisibility: .visible) {
+                                        Button("Cambiar cabezal") { store.changeHeadNow() }
+                                        Button("Cancelar", role: .cancel) {}
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .fill(.ultraThinMaterial)
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
-                                            .allowsHitTesting(false)
-                                    )
-                                    .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
-                                }
-                                .padding(.top, -5) // acerca la punta de la flecha al botón
-                                .transition(.scale(scale: 0.85, anchor: .top).combined(with: .opacity))
-                                .accessibilityIdentifier("head-confirm")
                             }
-                        }
-                        .coordinateSpace(name: "headConfirmSpace")
-                        .onPreferenceChange(HeadButtonFrameKey.self) { cambiarBtnFrame = $0 }
                     }
 
                     // Datos
@@ -294,22 +242,4 @@ struct ShareSheet: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)
     }
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
-}
-
-// Flecha triangular de la burbuja de confirmación del cabezal.
-private struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        p.closeSubpath()
-        return p
-    }
-}
-
-// Posición del botón "Cambiar" para alinear la flecha de la burbuja.
-private struct HeadButtonFrameKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
 }
