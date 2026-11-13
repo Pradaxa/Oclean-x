@@ -7,7 +7,8 @@ struct ContentView: View {
         if let i = a.firstIndex(of: "-openTab"), i + 1 < a.count {
             switch a[i + 1] {
             case "historial": return 1
-            case "ajustes": return 2
+            case "tendencias": return 2
+            case "ajustes": return 3
             default: return 0
             }
         }
@@ -22,9 +23,12 @@ struct ContentView: View {
             HistorialView()
                 .tabItem { Label("Historial", systemImage: "calendar") }
                 .tag(1)
+            TendenciasView()
+                .tabItem { Label("Tendencias", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(2)
             AjustesView()
                 .tabItem { Label("Ajustes", systemImage: "gearshape.fill") }
-                .tag(2)
+                .tag(3)
         }
         .tint(Theme.accent)
     }

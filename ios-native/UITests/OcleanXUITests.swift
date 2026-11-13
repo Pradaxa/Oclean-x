@@ -22,6 +22,15 @@ final class OcleanXUITests: XCTestCase {
                       "el detalle no abrió al tocar la fila")
     }
 
+    // Tendencias muestra sus tres tarjetas (pedido de Adrián 02:03, 13-nov).
+    func testTendenciasMuestraTarjetas() throws {
+        let app = launch(["-seedDemo", "-openTab", "tendencias"])
+        XCTAssertTrue(app.staticTexts["Cepillados al día"].waitForExistence(timeout: 15),
+                      "no aparece la tarjeta de cepillados al día")
+        XCTAssertTrue(app.staticTexts["Duración media"].exists, "no aparece la tarjeta de duración")
+        XCTAssertTrue(app.staticTexts["Puntuación media"].exists, "no aparece la tarjeta de puntuación")
+    }
+
     // El toggle de Cambio de zona responde en Ajustes.
     func testAjustesToggleResponde() throws {
         let app = launch(["-seedDemo", "-openTab", "ajustes"])

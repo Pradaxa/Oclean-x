@@ -20,10 +20,12 @@ struct AjustesView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Ajustes").font(.largeTitle.bold()).padding(.top, 8)
 
-                    // Opciones de cepillado: SOLO las 4 del menú del cepillo
+                    // Opciones de cepillado: las 4 del menú del cepillo
                     // (petición de Adrián 11:29): duración, cambio de zona, modo
-                    // y potencia. Modo+potencia+duración se componen en un único
-                    // programa de fábrica vía 0206 y se envían al sincronizar.
+                    // y potencia, más el botón de cambio de cabezal al final
+                    // (pedido de Adrián 02:03, 13-nov). Modo+potencia+duración se
+                    // componen en un único programa de fábrica vía 0206 y se envían
+                    // al sincronizar.
                     GlassCard {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
@@ -80,6 +82,27 @@ struct AjustesView: View {
                                 Text("Verificación con el cepillo: \(chk)")
                                     .font(.caption).foregroundColor(.secondary)
                             }
+
+                            // Cambio de cabezal (pedido de Adrián 02:03, 13-nov):
+                            // botón al final de las opciones y medida = tiempo
+                            // RESTANTE (cuenta atrás de 90 días; al cambiar,
+                            // vuelve a 90). headDays lo lee el cepillo (0302) y
+                            // el reinicio va por 020F en la próxima sync.
+                            Divider().padding(.vertical, 2)
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Cambio de cabezal").font(.subheadline)
+                                    Text(headLabel).font(.caption).foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Button("Cambiar") { showHeadConfirm = true }
+                                    .glassGhostButton()
+                                    .disabled(store.pending.headReset == true)
+                            }
+                            if store.pending.headReset == true {
+                                Text("Se reiniciará en la próxima sincronización")
+                                    .font(.footnote).foregroundColor(.secondary)
+                            }
                         }
                     }
 
@@ -119,30 +142,6 @@ struct AjustesView: View {
                                 Text(store.model ?? "—")
                             }.font(.subheadline)
 
-                            // Cabezal: contador de 90 días leído del cepillo (0302)
-                            // y botón "Cambiar cabezal" que lo reinicia (020F en la
-                            // próxima sincronización). Pedido de Adrián (14:42).
-                            Divider().padding(.vertical, 4)
-                            HStack {
-                                Text("Cabezal").foregroundColor(.secondary)
-                                Spacer()
-                                if let hd = store.headDays {
-                                    let left = max(0, 90 - hd)
-                                    Text(left > 0 ? "quedan \(left) de 90 días · \(store.headTimes ?? 0) usos" : "toca cambiarlo · \(store.headTimes ?? 0) usos")
-                                } else {
-                                    Text("sincroniza para leerlo")
-                                }
-                            }.font(.subheadline)
-                            HStack {
-                                if store.pending.headReset == true {
-                                    Text("Se reiniciará en la próxima sincronización")
-                                        .font(.footnote).foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Button("Cambiar cabezal") { showHeadConfirm = true }
-                                    .glassGhostButton()
-                                    .disabled(store.pending.headReset == true)
-                            }
                             Text("Si usas también la app oficial de Oclean, sincroniza primero aquí: la oficial puede vaciar la memoria del cepillo al conectar.")
                                 .font(.footnote).foregroundColor(.secondary)
                         }
@@ -211,10 +210,19 @@ struct AjustesView: View {
             Button("Borrar todo", role: .destructive) { store.wipe(); ble.clearLog(); notice = "Datos borrados" }
             Button("Cancelar", role: .cancel) {}
         }
-        .confirmationDialog("¿Has puesto un cabezal nuevo? El contador de 90 días vuelve a 0 en la próxima sincronización.", isPresented: $showHeadConfirm, titleVisibility: .visible) {
+        .confirmationDialog("¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días en la próxima sincronización.", isPresented: $showHeadConfirm, titleVisibility: .visible) {
             Button("Cambiar cabezal") { store.requestHeadReset() }
             Button("Cancelar", role: .cancel) {}
         }
+    }
+
+    private var headLabel: String {
+        /* Medida pedida por Adrián (02:03, 13-nov): tiempo RESTANTE, máx 90 días. */
+        if let hd = store.headDays {
+            let left = max(0, 90 - hd)
+            return left > 0 ? "Quedan \(left) días" : "Toca cambiarlo"
+        }
+        return "Sincroniza para leer el contador"
     }
 
     private func export() {
