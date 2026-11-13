@@ -83,11 +83,10 @@ struct AjustesView: View {
                                     .font(.caption).foregroundColor(.secondary)
                             }
 
-                            // Cambio de cabezal (pedido de Adrián 02:03, 13-nov):
-                            // botón al final de las opciones y medida = tiempo
-                            // RESTANTE (cuenta atrás de 90 días; al cambiar,
-                            // vuelve a 90). headDays lo lee el cepillo (0302) y
-                            // el reinicio va por 020F en la próxima sync.
+                            // Cambio de cabezal (pedidos de Adrián 02:03 y voz
+                            // 02:56, 13-nov): recordatorio LOCAL, cuenta atrás de
+                            // 90 días independiente del cepillo; "Cambiar" la
+                            // reinicia a 90 al instante, sin sincronizar.
                             Divider().padding(.vertical, 2)
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -97,11 +96,6 @@ struct AjustesView: View {
                                 Spacer()
                                 Button("Cambiar") { showHeadConfirm = true }
                                     .glassGhostButton()
-                                    .disabled(store.pending.headReset == true)
-                            }
-                            if store.pending.headReset == true {
-                                Text("Se reiniciará en la próxima sincronización")
-                                    .font(.footnote).foregroundColor(.secondary)
                             }
                         }
                     }
@@ -210,19 +204,18 @@ struct AjustesView: View {
             Button("Borrar todo", role: .destructive) { store.wipe(); ble.clearLog(); notice = "Datos borrados" }
             Button("Cancelar", role: .cancel) {}
         }
-        .confirmationDialog("¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días en la próxima sincronización.", isPresented: $showHeadConfirm, titleVisibility: .visible) {
-            Button("Cambiar cabezal") { store.requestHeadReset() }
+        .confirmationDialog("¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días.", isPresented: $showHeadConfirm, titleVisibility: .visible) {
+            Button("Cambiar cabezal") { store.changeHeadNow() }
             Button("Cancelar", role: .cancel) {}
         }
     }
 
     private var headLabel: String {
-        /* Medida pedida por Adrián (02:03, 13-nov): tiempo RESTANTE, máx 90 días. */
-        if let hd = store.headDays {
-            let left = max(0, 90 - hd)
-            return left > 0 ? "Quedan \(left) días" : "Toca cambiarlo"
+        /* Recordatorio local (voz de Adrián 02:56, 13-nov): tiempo RESTANTE. */
+        if let left = store.headRemaining {
+            return left > 0 ? "Quedan \(left) días" : "Toca cambiar cabezal"
         }
-        return "Sincroniza para leer el contador"
+        return "Pulsa Cambiar cuando pongas uno nuevo"
     }
 
     private func export() {

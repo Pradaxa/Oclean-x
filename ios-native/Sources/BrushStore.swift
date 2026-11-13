@@ -22,10 +22,8 @@ struct PendingSettings: Codable {
     var customSeconds: Int?
     /* Cambio de zona: aviso cada 30s para cambiar de cuadrante (020D on/off) */
     var areaRemind: Bool?
-    /* Cabezal nuevo: reinicia el contador de días/usos del cabezal (020F) */
-    var headReset: Bool?
     var isEmpty: Bool {
-        customGear == nil && customSeconds == nil && areaRemind == nil && headReset == nil
+        customGear == nil && customSeconds == nil && areaRemind == nil
     }
 }
 
@@ -153,8 +151,9 @@ func parseSessionRecord(_ r: [UInt8]) -> BrushSession? {
 final class BrushStore: ObservableObject {
     @Published var sessions: [BrushSession] = []
     @Published var battery: Int? = nil
-    @Published var headDays: Int? = nil
+    @Published var headDays: Int? = nil      // contador del cepillo (0302); ya no se usa para el recordatorio
     @Published var headTimes: Int? = nil
+    @Published var headChangedAt: Double? = nil  // recordatorio LOCAL de cabezal (90 días)
     @Published var brushMode: Int? = nil
     @Published var areaRemind: Bool = false
     @Published var model: String? = nil
@@ -193,12 +192,20 @@ final class BrushStore: ObservableObject {
         save()
     }
 
-    /* Pedido de Adrián (14:42): botón "Cambiar cabezal" que reinicia el
-       contador de 90 días. Se envía al cepillo (020F) en la próxima
-       sincronización y se verifica que el contador queda a 0. */
-    func requestHeadReset() {
-        pending.headReset = true
+    /* Pedido de Adrián (voz 02:56, 13-nov): el cabezal es un recordatorio
+       LOCAL, independiente del cepillo: cuenta atrás de 90 días en la app,
+       sin 020F ni lectura del contador del cepillo. "Cambiar" reinicia a 90
+       al instante. headChangedAt = momento (ms epoch) del último cambio. */
+    func changeHeadNow() {
+        headChangedAt = Date().timeIntervalSince1970 * 1000
         save()
+    }
+
+    /* Días que quedan (90 -> 0); nil si nunca se ha marcado un cambio. */
+    var headRemaining: Int? {
+        guard let t = headChangedAt else { return nil }
+        let elapsed = Int((Date().timeIntervalSince1970 * 1000 - t) / 86_400_000)
+        return max(0, 90 - elapsed)
     }
     // Resultado de la verificación de ajustes contra el cepillo (transitorio, no se guarda)
     @Published var settingsCheck: String? = nil
@@ -209,7 +216,7 @@ final class BrushStore: ObservableObject {
 
     private struct Persisted: Codable {
         var sessions: [BrushSession]
-        var battery: Int?; var headDays: Int?; var headTimes: Int?
+        var battery: Int?; var headDays: Int?; var headTimes: Int?; var headChangedAt: Double?
         var brushMode: Int?; var areaRemind: Bool
         var model: String?; var pending: PendingSettings; var lastSync: Double?
         var ajMode: Int?; var ajPower: Int?; var ajDuration: Int?
@@ -226,6 +233,7 @@ final class BrushStore: ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("-seedDemo") {
             sessions = Self.samples()
             battery = 82; headDays = 23; headTimes = 41
+            headChangedAt = Date().timeIntervalSince1970 * 1000 - 23 * 86_400_000
             brushMode = 0; model = "OCLEANY3"
             areaRemind = true
             lastSync = Date().timeIntervalSince1970 * 1000; lastSess = 0
@@ -289,7 +297,7 @@ final class BrushStore: ObservableObject {
     }
 
     func wipe() {
-        sessions = []; battery = nil; headTimes = nil; headDays = nil
+        sessions = []; battery = nil; headTimes = nil; headDays = nil; headChangedAt = nil
         model = nil; lastSync = nil; lastSess = -1
         brushMode = nil; areaRemind = false
         pending = PendingSettings()
@@ -298,7 +306,7 @@ final class BrushStore: ObservableObject {
     }
 
     func save() {
-        let p = Persisted(sessions: sessions, battery: battery, headDays: headDays, headTimes: headTimes,
+        let p = Persisted(sessions: sessions, battery: battery, headDays: headDays, headTimes: headTimes, headChangedAt: headChangedAt,
                           brushMode: brushMode, areaRemind: areaRemind,
                           model: model, pending: pending, lastSync: lastSync,
                           ajMode: ajMode, ajPower: ajPower, ajDuration: ajDuration)
@@ -312,6 +320,14 @@ final class BrushStore: ObservableObject {
         brushMode = p.brushMode; areaRemind = p.areaRemind
         model = p.model; pending = p.pending; lastSync = p.lastSync
         ajMode = p.ajMode ?? 0; ajPower = p.ajPower ?? 16; ajDuration = p.ajDuration ?? 120
+        headChangedAt = p.headChangedAt
+        /* Migración al recordatorio local (13-nov): si nunca marcó un cambio
+           pero el cepillo decía cuántos días llevaba el cabezal, la cuenta
+           atrás arranca desde ahí para que no pierda lo que ya llevaba. */
+        if headChangedAt == nil, let hd = headDays {
+            headChangedAt = Date().timeIntervalSince1970 * 1000 - Double(hd) * 86_400_000
+            save()
+        }
     }
 }
 

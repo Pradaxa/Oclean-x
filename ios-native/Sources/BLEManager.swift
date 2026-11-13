@@ -302,9 +302,6 @@ final class BLEManager: NSObject, ObservableObject {
                 if let v = pend.areaRemind {
                     if await writeOK([0x02, 0x0d, v ? 1 : 0], to: w, on: p) { await MainActor.run { st.areaRemind = v } } else { allOk = false }
                 }
-                if pend.headReset == true {
-                    if await writeOK([0x02, 0x0f], to: w, on: p) { dlog("cambio de cabezal -> contador reiniciado (020F)") } else { allOk = false }
-                }
                 if allOk { await MainActor.run { st.pending = PendingSettings(); st.save() }; dlog("ajustes aplicados") }
                 else { dlog("algunos ajustes no se pudieron enviar; quedan pendientes") }
 
@@ -322,7 +319,6 @@ final class BLEManager: NSObject, ObservableObject {
                        mirando la pantalla del cepillo o al cepillarse. */
                     if let g = pend.customGear { checks.append(cur.0 == mode(forGear: g) ? "modo OK (confirmado por el cepillo)" : "modo NO confirmado por el cepillo") }
                     if let v = pend.areaRemind { checks.append(cur.1 == v ? "cambio de zona OK" : "cambio de zona NO confirmado") }
-                    if pend.headReset == true { checks.append((cur.2 ?? -1) == 0 ? "cabezal OK (contador a 0)" : "cabezal NO confirmado por el cepillo") }
                     if !checks.isEmpty {
                         let rep = checks.joined(separator: " - ")
                         dlog("verificacion de ajustes: \(rep)")
