@@ -80,6 +80,10 @@ jobs:
           sleep 12
           xcrun simctl io "$DEVICE" screenshot "shots/glass-tendencias.png" || true
           xcrun simctl terminate "$DEVICE" "$BID" >/dev/null 2>&1 || true
+          xcrun simctl launch "$DEVICE" "$BID" -seedDemo -openTab ajustes -showHeadConfirm >/dev/null 2>&1 || true
+          sleep 12
+          xcrun simctl io "$DEVICE" screenshot "shots/glass-ajustes-cabezal.png" || true
+          xcrun simctl terminate "$DEVICE" "$BID" >/dev/null 2>&1 || true
           xcrun simctl launch "$DEVICE" "$BID" -seedDemo -openTab ajustes >/dev/null 2>&1 || true
           sleep 12
           xcrun simctl io "$DEVICE" screenshot "shots/glass-ajustes.png" || true

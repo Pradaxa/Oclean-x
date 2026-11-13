@@ -94,8 +94,33 @@ struct AjustesView: View {
                                     Text(headLabel).font(.caption).foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                Button("Cambiar") { showHeadConfirm = true }
+                                Button("Cambiar") { withAnimation { showHeadConfirm.toggle() } }
                                     .glassGhostButton()
+                            }
+                            // Confirmación en línea, JUSTO debajo del botón
+                            // (pedido de Adrián 09:37, 13-nov): el diálogo del
+                            // sistema salía como hoja abajo del todo, lejos del
+                            // botón. Así aparece pegado donde pulsa.
+                            if showHeadConfirm {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días.")
+                                        .font(.footnote).foregroundColor(.secondary)
+                                    HStack(spacing: 10) {
+                                        Button("Cambiar cabezal") {
+                                            store.changeHeadNow()
+                                            withAnimation { showHeadConfirm = false }
+                                        }
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 14).padding(.vertical, 8)
+                                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.accent))
+                                        .accessibilityIdentifier("head-confirm-change")
+                                        Button("Cancelar") { withAnimation { showHeadConfirm = false } }
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .accessibilityIdentifier("head-confirm")
                             }
                         }
                     }
@@ -188,6 +213,10 @@ struct AjustesView: View {
         .sheet(isPresented: $showShare) {
             if let u = shareURL { ShareSheet(url: u) }
         }
+        .onAppear {
+            // Para la captura de CI: abre la confirmación en línea del cabezal.
+            if ProcessInfo.processInfo.arguments.contains("-showHeadConfirm") { showHeadConfirm = true }
+        }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [UTType.json]) { result in
             if case .success(let url) = result {
                 let ok = url.startAccessingSecurityScopedResource()
@@ -201,11 +230,8 @@ struct AjustesView: View {
             }
         }
         .confirmationDialog("¿Borrar todo? Se eliminan historial y ajustes guardados.", isPresented: $showWipeConfirm, titleVisibility: .visible) {
+
             Button("Borrar todo", role: .destructive) { store.wipe(); ble.clearLog(); notice = "Datos borrados" }
-            Button("Cancelar", role: .cancel) {}
-        }
-        .confirmationDialog("¿Has puesto un cabezal nuevo? La cuenta atrás vuelve a 90 días.", isPresented: $showHeadConfirm, titleVisibility: .visible) {
-            Button("Cambiar cabezal") { store.changeHeadNow() }
             Button("Cancelar", role: .cancel) {}
         }
     }
