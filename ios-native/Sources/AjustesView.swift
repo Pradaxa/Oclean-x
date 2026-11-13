@@ -106,6 +106,7 @@ struct AjustesView: View {
                                         Button("Cancelar", role: .cancel) {}
                                     }
                             }
+                        }
                     }
 
                     // Datos
@@ -197,7 +198,7 @@ struct AjustesView: View {
             if let u = shareURL { ShareSheet(url: u) }
         }
         .onAppear {
-            // Para la captura de CI: abre la confirmación en línea del cabezal.
+            // Para la captura de CI: abre la confirmación del cabezal.
             if ProcessInfo.processInfo.arguments.contains("-showHeadConfirm") { showHeadConfirm = true }
         }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [UTType.json]) { result in
