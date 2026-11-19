@@ -12,6 +12,14 @@
       "tintColor": "F2343E",
       "versions": [
         {
+          "version": "0.3.67",
+          "buildVersion": "67",
+          "date": "2026-11-19T21:15:03Z",
+          "downloadURL": "https://github.com/Pradaxa/oclean-x/releases/download/native-v0.3.67/OcleanX-native-glass.ipa",
+          "size": 1206015,
+          "minOSVersion": "15.0"
+        },
+        {
           "version": "0.3.57",
           "buildVersion": "57",
           "date": "2026-11-13T12:05:00Z",
