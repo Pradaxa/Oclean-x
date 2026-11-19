@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import SwiftUI
 
 /* ---------- Modelos (port de app.js v14) ---------- */
 
@@ -118,6 +119,26 @@ func zoneClasses(_ s: BrushSession) -> [ZoneClass]? {
         if v == 0 || sum <= 0 { return .bad }
         let norm = Double(v) / Double(sum) * dur
         return norm >= 9 ? .good : (norm >= 4 ? .mid : .bad)
+    }
+}
+
+/* Segundos dedicados a cada zona en una sesión: la misma normalización que
+   zoneClasses (v/suma * duración). Base del agregado de Tendencias. */
+func zoneSeconds(_ s: BrushSession) -> [Double]? {
+    guard let z = s.zones else { return nil }
+    let sum = z.reduce(0, +)
+    guard sum > 0 else { return nil }
+    let dur = Double(s.dur ?? s.durSched ?? 120)
+    return z.map { Double($0) / Double(sum) * dur }
+}
+
+/* Color de una clase de zona (compartido por el detalle y Tendencias). */
+func zoneColor(_ c: ZoneClass) -> Color {
+    switch c {
+    case .good: return Color(red: 0.55, green: 0.85, blue: 0.62)
+    case .mid: return Color(red: 0.94, green: 0.65, blue: 0.35)
+    case .bad: return Theme.accent
+    case .none: return Color.white.opacity(0.2)
     }
 }
 

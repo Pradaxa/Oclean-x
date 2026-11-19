@@ -29,6 +29,10 @@ final class OcleanXUITests: XCTestCase {
                       "no aparece la tarjeta de cepillados al día")
         XCTAssertTrue(app.staticTexts["Duración media"].exists, "no aparece la tarjeta de duración")
         XCTAssertTrue(app.staticTexts["Puntuación media"].exists, "no aparece la tarjeta de puntuación")
+        // Zonas (pedido de Adrián 17:20, 19-nov): tarjeta con el agregado de todos los cepillados
+        XCTAssertTrue(app.staticTexts["Qué zonas cepillas mejor"].exists, "no aparece la tarjeta de zonas")
+        XCTAssertTrue(app.staticTexts["Mejor: Superior izq. exterior · Peor: Inferior der. interior"].exists,
+                      "no aparece el resumen mejor/peor zona")
     }
 
     // El toggle de Cambio de zona responde en Ajustes.

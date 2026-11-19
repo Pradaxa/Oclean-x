@@ -4,6 +4,7 @@ import SwiftUI
    últimos 14 días. iOS 15 no tiene Swift Charts: barras hechas a mano. */
 struct TendenciasView: View {
     @EnvironmentObject var store: BrushStore
+    @StateObject private var scrollLock = ScrollLock()
 
     private struct DayStats {
         let initial: String   // inicial del día de la semana ("L", "M", ...)
@@ -39,6 +40,32 @@ struct TendenciasView: View {
         }
     }
 
+    private struct ZoneStat {
+        let avg: Double      // segundos normalizados medios por cepillado
+        let cls: ZoneClass
+    }
+
+    /* Zonas (pedido de Adrián 17:20, 19-nov): con TODOS los cepillados
+       guardados, qué partes se cepilla mejor y cuáles peor. Por zona, la
+       media de los segundos que le dedica en cada cepillado (misma
+       normalización que zoneClasses) con los mismos umbrales: >= 9 s bien,
+       >= 4 s regular, menos mal. */
+    private var zoneAgg: (stats: [ZoneStat], count: Int)? {
+        let src = isSample ? BrushStore.samples() : store.sessions
+        var totals = [Double](repeating: 0, count: 8)
+        var n = 0
+        for s in src {
+            guard let secs = zoneSeconds(s) else { continue }
+            for i in 0..<8 { totals[i] += secs[i] }
+            n += 1
+        }
+        guard n > 0 else { return nil }
+        return ((0..<8).map { i -> ZoneStat in
+            let avg = totals[i] / Double(n)
+            return ZoneStat(avg: avg, cls: avg >= 9 ? .good : (avg >= 4 ? .mid : .bad))
+        }, n)
+    }
+
     private func initial(_ d: Date) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "es_ES")
@@ -49,6 +76,7 @@ struct TendenciasView: View {
     var body: some View {
         ZStack {
             Theme.bgGradient.ignoresSafeArea()
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Tendencias").font(.largeTitle.bold()).padding(.top, 8)
@@ -97,6 +125,47 @@ struct TendenciasView: View {
                     }
                     .accessibilityIdentifier("tendencias-score")
 
+                    // Zonas: qué partes se cepilla mejor y cuáles peor
+                    if let agg = zoneAgg {
+                        GlassCard {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Qué zonas cepillas mejor").font(.headline)
+                                Text("Media de todos tus cepillados (\(agg.count))")
+                                    .font(.caption).foregroundColor(.secondary)
+                                DentureView(classes: agg.stats.map(\.cls), scrollLock: scrollLock)
+                                    .frame(height: 280)
+                                let maxV = max(1, agg.stats.map(\.avg).max() ?? 1)
+                                VStack(spacing: 8) {
+                                    ForEach(0..<8, id: \.self) { i in
+                                        HStack(spacing: 8) {
+                                            Circle().fill(zoneColor(agg.stats[i].cls)).frame(width: 8, height: 8)
+                                            Text(ZONES_FULL[i]).font(.caption).foregroundColor(.secondary)
+                                                .frame(width: 132, alignment: .leading)
+                                            GeometryReader { g in
+                                                ZStack(alignment: .leading) {
+                                                    Capsule().fill(Color.white.opacity(0.08))
+                                                    Capsule().fill(zoneColor(agg.stats[i].cls).opacity(0.85))
+                                                        .frame(width: max(4, g.size.width * CGFloat(agg.stats[i].avg / maxV)))
+                                                }
+                                            }
+                                            .frame(height: 8)
+                                            Text("\(Int(agg.stats[i].avg.rounded())) s")
+                                                .font(.caption.monospacedDigit())
+                                                .frame(width: 36, alignment: .trailing)
+                                        }
+                                    }
+                                }
+                                let best = agg.stats.enumerated().max(by: { $0.element.avg < $1.element.avg })!.offset
+                                let worst = agg.stats.enumerated().min(by: { $0.element.avg < $1.element.avg })!.offset
+                                Text("Mejor: \(ZONES_FULL[best]) · Peor: \(ZONES_FULL[worst])")
+                                    .font(.caption.weight(.medium))
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                            }
+                        }
+                        .accessibilityIdentifier("tendencias-zonas")
+                        .id("tendencias-zonas-anchor")
+                    }
+
                     if isSample {
                         Text("Cuando sincronices el cepillo verás aquí tus tendencias reales.")
                             .font(.footnote).foregroundColor(.secondary)
@@ -105,6 +174,16 @@ struct TendenciasView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 30)
+            }
+            .scrollDisablediOS15(scrollLock.locked)
+            .onAppear {
+                // Solo capturas del simulador: bajar hasta la tarjeta de zonas.
+                if ProcessInfo.processInfo.arguments.contains("-tendenciasZones") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        withAnimation { proxy.scrollTo("tendencias-zonas-anchor", anchor: .top) }
+                    }
+                }
+            }
             }
         }
     }

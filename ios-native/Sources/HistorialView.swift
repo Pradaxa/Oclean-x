@@ -142,12 +142,5 @@ struct SessionDetailSheet: View {
         }
     }
 
-    private func dotColor(_ c: ZoneClass) -> Color {
-        switch c {
-        case .good: return Color(red: 0.55, green: 0.85, blue: 0.62)
-        case .mid: return Color(red: 0.94, green: 0.65, blue: 0.35)
-        case .bad: return Theme.accent
-        case .none: return Color.white.opacity(0.2)
-        }
-    }
+    private func dotColor(_ c: ZoneClass) -> Color { zoneColor(c) }
 }
