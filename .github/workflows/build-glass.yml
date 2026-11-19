@@ -13,13 +13,18 @@ permissions:
 
 jobs:
   ios-native-glass:
-    runs-on: macos-26
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
       - name: Toolchain
         run: |
           xcodebuild -version
+          SDKV=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iPhoneOS SDK: $SDKV"
+          # Sin SDK 26 no hay Liquid Glass real (Adrián prefiere esperar, 12-nov):
+          # abortar enseguida en vez de publicar un build sin glass.
+          [ "${SDKV%%.*}" = "26" ] || { echo "SDK $SDKV no es 26: build sin glass, se cancela"; exit 1; }
           xcodebuild -runFirstLaunch || true
 
       - name: Preparar recursos (3D web + icono)
